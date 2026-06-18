@@ -33,7 +33,14 @@ function load({ userSettings = {}, theme = 'github-light', webModules = 'default
     showAlert: (alert) => { calls.alerts.push(alert); },
   };
 
-  const sandbox = { MarkEdit, window: win, globalThis: undefined };
+  // Mirror the real MarkEdit scripts/ runtime: the API is delivered as a
+  // CommonJS module via require("markedit-api"), not as a bare global.
+  const requireFn = (name) => {
+    if (name === 'markedit-api') return { MarkEdit };
+    throw new Error(`unknown module: ${name}`);
+  };
+
+  const sandbox = { require: requireFn, window: win, globalThis: undefined };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(scriptSrc, sandbox, { filename: 'theme-toggle.js' });

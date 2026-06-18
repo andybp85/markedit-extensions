@@ -3,7 +3,7 @@
     {
       "title": "Toggle Theme",
       "icon": "circle.lefthalf.filled",
-      "menuName": "Toggle Light/Dark Theme"
+      "actionName": "Toggle Light/Dark Theme"
     }
   ]
 }

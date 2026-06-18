@@ -8,6 +8,9 @@
 (function () {
   "use strict";
 
+  // In MarkEdit's scripts/ runtime the API is a CommonJS module, not a global.
+  var MarkEdit = require("markedit-api").MarkEdit;
+
   var MENU_TITLE = "Toggle Light/Dark Theme";
   var DEFAULTS = { light: "github-light", dark: "github-dark" };
 

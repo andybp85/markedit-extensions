@@ -40,9 +40,13 @@ and `winter-is-coming-*` (each with a `-light` and `-dark` variant).
 
 ## Use
 
-Click the toolbar button (a half-filled circle), or use **Extensions → Toggle
-Light/Dark Theme** from the menu bar. The menu item shows a checkmark when the dark
-theme is active.
+After restarting, add the button to the toolbar: **View → Customize Toolbar…**, then
+drag the half-filled-circle **Toggle Theme** item into the toolbar. (A
+`customToolbarItems` entry only makes the item *available*; you place it via
+Customize Toolbar.)
+
+Then click the toolbar button, or use **Extensions → Toggle Light/Dark Theme** from
+the menu bar. The menu item shows a checkmark when the dark theme is active.
 
 ## Uninstall
 
