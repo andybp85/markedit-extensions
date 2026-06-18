@@ -1,0 +1,9 @@
+{
+  "editor.customToolbarItems": [
+    {
+      "title": "Toggle Theme",
+      "icon": "circle.lefthalf.filled",
+      "menuName": "Toggle Light/Dark Theme"
+    }
+  ]
+}
