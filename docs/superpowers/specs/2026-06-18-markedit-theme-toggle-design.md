@@ -109,3 +109,26 @@ Single plain-JS user script: `scripts/theme-toggle.js`.
 MarkEdit-api, so it could change across versions. It is the only live theme-swap
 path and is exactly what the app uses internally. Mitigated with a runtime guard
 and a clear alert if the interface is missing.
+
+## Update (2026-06-18) — post-implementation corrections
+
+Two assumptions in this spec were wrong against a live MarkEdit and were corrected:
+
+1. **API access.** The `scripts/` runtime delivers the API as a CommonJS module
+   (`require("markedit-api").MarkEdit`), not a bare `MarkEdit` global. The script
+   and the `node:vm` test harness were corrected to model `require`.
+2. **Toolbar binding.** A toolbar item invokes a JS-registered menu item via
+   `actionName` (matched against the menu item title by
+   `NSApp.mainMenu.firstActionNamed`), not `menuName`. The settings snippet uses
+   `actionName: "Toggle Light/Dark Theme"`.
+
+**Preview-mode limitation (confirmed by source review).** The Markdown preview pane
+(`markedit-preview`) themes itself off `prefers-color-scheme` (native window
+appearance), independent of the editor theme this script controls. JS cannot change
+`prefers-color-scheme`. The unified light/dark lever is the native UserDefaults
+`general.appearance` (drives `editor.light-theme`/`editor.dark-theme` selection and
+the preview via `NSApp.effectiveAppearance`), but it is **not** reachable from a
+user script: the native bridge is notify-only, there is no appearance menu command
+for a toolbar `actionName` to invoke, and the sandbox cannot write app preferences.
+Decision: this button stays an editor-theme toggle; full swaps use **Settings →
+General → Appearance**. Documented in the README.

@@ -6,10 +6,27 @@ restart.
 
 ## Scope
 
-A MarkEdit user script runs inside the editor WebView, so this themes the **editor
-surface** (the CodeMirror view) only — not the native macOS window or toolbar
-chrome. It is a manual, live override; MarkEdit may re-apply its own
-appearance-driven theme when you change the system light/dark setting or relaunch.
+This button swaps the **editor theme** (the CodeMirror editing surface), live. That
+is the only theme lever MarkEdit exposes to a user script — it calls the same
+internal bridge MarkEdit uses to apply themes.
+
+What it does **not** do, and why:
+
+- **Preview mode is not affected.** The Markdown preview pane themes itself off the
+  native window appearance (`prefers-color-scheme`), which a sandboxed user script
+  cannot change. So this button changes the editor in edit mode but leaves preview
+  as-is.
+- **Native window/toolbar chrome** is not directly controlled (the toolbar tint
+  happens to follow because MarkEdit recolors it from the editor background).
+
+### Want a full light/dark swap (editor **and** preview)?
+
+Use MarkEdit's built-in control: **Settings → General → Appearance → Light / Dark**.
+That flips the app appearance, which drives both the editor (via your configured
+light/dark themes) and the preview together, live. There is no plugin/toolbar hook
+for app appearance — it lives only in Settings — so this script and that setting are
+complementary: the button for a quick editor swap, the setting for an everything
+swap.
 
 ## Install
 
