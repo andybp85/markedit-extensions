@@ -1,0 +1,17 @@
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Tooling caches
+.memsearch/
+.firecrawl/
+
+# Node (in case tooling is added later)
+node_modules/
+dist/
+build/
+*.log
