@@ -11,6 +11,19 @@ extensions read.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-06
+
+### Added
+
+- `extensions/copy-on-select`: copies the selected text to the clipboard when a
+  mouse selection ends. Keyboard selections never copy. A menu item turns the
+  extension on and off, and the state is kept in the `extension.copyOnSelect`
+  key of `settings.json`.
+- `test/repo.test.mjs` holds the repository invariants. Every extension must
+  have a README, a top-level script, and a test directory. The root README must
+  list every extension, and the changelog must document the version in
+  `package.json`.
+
 ## [1.0.0] - 2026-08-06
 
 First versioned release. The repository became a home for more than one MarkEdit
