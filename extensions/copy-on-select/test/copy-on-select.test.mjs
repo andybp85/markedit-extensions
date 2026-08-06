@@ -183,3 +183,79 @@ test('turning the extension off clears the repeat record', () => {
   domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
   assert.deepEqual(calls.writeText, ['quick', 'quick']);
 });
+
+// The toggle writes the file in a promise that the caller does not await.
+const settled = () => new Promise((resolve) => setImmediate(resolve));
+
+test('a toggle writes settings.json and keeps the unrelated keys', async () => {
+  const files = { '/docs/settings.json': JSON.stringify({ 'editor.fontSize': 14, 'extension.themeToggle': { dark: 'x' } }) };
+  const { calls, menuItem } = load({ files });
+  menuItem.action();
+  await settled();
+
+  assert.equal(calls.created.length, 1);
+  assert.equal(calls.created[0].path, '/docs/settings.json');
+  assert.equal(calls.created[0].overwrites, true);
+  const written = JSON.parse(calls.created[0].string);
+  assert.deepEqual(written['extension.copyOnSelect'], { enabled: false });
+  assert.equal(written['editor.fontSize'], 14);
+  assert.deepEqual(written['extension.themeToggle'], { dark: 'x' });
+});
+
+test('a toggle keeps the unrelated keys inside its own settings object', async () => {
+  const files = { '/docs/settings.json': JSON.stringify({ 'extension.copyOnSelect': { enabled: true, note: 'keep me' } }) };
+  const { calls, menuItem } = load({ files });
+  menuItem.action();
+  await settled();
+  assert.deepEqual(JSON.parse(calls.created[0].string)['extension.copyOnSelect'], { enabled: false, note: 'keep me' });
+});
+
+test('an absent settings.json is written as a new file', async () => {
+  const { calls, menuItem } = load();
+  menuItem.action();
+  await settled();
+  assert.equal(calls.created.length, 1);
+  assert.deepEqual(JSON.parse(calls.created[0].string), { 'extension.copyOnSelect': { enabled: false } });
+});
+
+test('a malformed settings.json alerts and writes nothing', async () => {
+  const { calls, menuItem } = load({ files: { '/docs/settings.json': '{ this is not json' } });
+  menuItem.action();
+  await settled();
+  assert.deepEqual(calls.created, [], 'an unparseable file must never be overwritten');
+  assert.equal(calls.alerts.length, 1);
+  assert.match(calls.alerts[0].message, /settings\.json/);
+});
+
+test('a settings.json holding a non-object alerts and writes nothing', async () => {
+  const { calls, menuItem } = load({ files: { '/docs/settings.json': '[1, 2, 3]' } });
+  menuItem.action();
+  await settled();
+  assert.deepEqual(calls.created, []);
+  assert.equal(calls.alerts.length, 1);
+});
+
+test('a failed write alerts', async () => {
+  const { calls, menuItem } = load({ createFileResult: false });
+  menuItem.action();
+  await settled();
+  assert.equal(calls.alerts.length, 1);
+});
+
+test('a broken settings.json alerts one time for each session', async () => {
+  const { calls, menuItem } = load({ files: { '/docs/settings.json': '{ nope' } });
+  menuItem.action();
+  await settled();
+  menuItem.action();
+  await settled();
+  assert.equal(calls.alerts.length, 1);
+});
+
+test('the toggle still works in memory when the file cannot be written', async () => {
+  const { calls, domHandlers, menuItem } = load({ createFileResult: false });
+  menuItem.action();
+  await settled();
+  assert.equal(menuItem.state().isSelected, false);
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  assert.deepEqual(calls.writeText, []);
+});

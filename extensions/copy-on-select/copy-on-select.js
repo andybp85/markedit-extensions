@@ -15,6 +15,7 @@
 
   const MENU_TITLE = 'Copy on Select'
   const SETTINGS_KEY = 'extension.copyOnSelect'
+  const SETTINGS_FILE = 'settings.json'
 
   let enabled = MarkEdit.userSettings?.[SETTINGS_KEY]?.enabled ?? true
 
@@ -22,6 +23,10 @@
   // clipboard manager from filling with identical entries, and which makes the
   // two mouseup handlers below safe to overlap.
   let lastCopied = ''
+
+  // One alert for each session. A user who toggles the item against a broken
+  // file does not need one alert for each attempt.
+  let alerted = false
 
   // Join every non-empty range, the way Command-C does for a multi-cursor
   // selection, so the extension and the key produce the same text.
@@ -45,11 +50,49 @@
     })
   }
 
+  // typeof null is 'object', so the null test is not redundant. JSON.parse is
+  // what produces null here; the rest of the file uses undefined.
+  const isPlainObject = value => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+  const alertOnce = message => {
+    if (alerted) return
+    alerted = true
+    MarkEdit.showAlert({ message, title: MENU_TITLE })
+  }
+
+  // Read, merge one key, write back, so every unrelated setting survives.
+  const persistEnabled = async () => {
+    const path = `${MarkEdit.getDirectoryPath('documents')}/${SETTINGS_FILE}`
+    const raw = await MarkEdit.getFileContent(path)
+
+    let settings = {}
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      try {
+        settings = JSON.parse(raw)
+      } catch {
+        settings = undefined
+      }
+      if (!isPlainObject(settings)) {
+        // Writing now would replace every MarkEdit setting with this one key.
+        alertOnce(`${SETTINGS_FILE} could not be read, so the setting was not saved. Correct the file, or the toggle will reset when you quit MarkEdit.`)
+        return
+      }
+    }
+
+    const current = isPlainObject(settings[SETTINGS_KEY]) ? settings[SETTINGS_KEY] : {}
+    settings[SETTINGS_KEY] = { ...current, enabled }
+
+    const written = await MarkEdit.createFile({ overwrites: true, path, string: JSON.stringify(settings, null, 2) })
+    if (!written)
+      alertOnce(`${SETTINGS_FILE} could not be written, so the setting was not saved. The toggle will reset when you quit MarkEdit.`)
+  }
+
   const toggle = () => {
     enabled = !enabled
     // Forget the last write, so the first selection after a restart of the
     // extension always reaches the clipboard.
     lastCopied = ''
+    void persistEnabled()
   }
 
   MarkEdit.addMainMenuItem({
