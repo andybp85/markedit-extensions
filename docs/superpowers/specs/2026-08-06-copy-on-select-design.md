@@ -90,8 +90,18 @@ mouseup ──> copySelection(view)
               ├─ text = selectedText(state)
               ├─ text === ''? ............... return
               ├─ text === lastCopied? ....... return
-              └─ clipboard.writeText(text) ─> lastCopied = text
+              ├─ lastCopied = text
+              └─ clipboard.writeText(text) ─> on failure, lastCopied = ''
 ```
+
+The extension records the text before the write, not after. The write is
+asynchronous. If the extension recorded the text after the write, the two
+`mouseup` handlers below could both run before either write finished, and both
+would see the old value and write. The skip rule protects the overlap only when
+the record happens first.
+
+A failed write clears the record, so the next selection of the same text can try
+again.
 
 `selectedText` joins every non-empty range with a newline. It does not read the
 main range alone. Command-C on a multi-cursor selection produces the same text,
