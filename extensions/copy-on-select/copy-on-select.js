@@ -117,4 +117,9 @@
     // uses a block body and returns undefined.
     mouseup: (event, view) => { copySelection(view) }
   }))
+
+  // A drag that ends outside the editor never reaches the handler above. This
+  // one catches it. Both can run for one gesture, which the skip rule in
+  // copySelection makes harmless.
+  document.addEventListener('mouseup', () => copySelection(MarkEdit.editorView))
 })()

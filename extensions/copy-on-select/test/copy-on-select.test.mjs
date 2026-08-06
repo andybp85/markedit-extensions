@@ -273,3 +273,32 @@ test('a rejecting file API alerts once and does not throw', async () => {
   assert.deepEqual(calls.created, []);
   assert.equal(calls.alerts.length, 1);
 });
+
+test('a mouseup on the document copies through MarkEdit.editorView', () => {
+  const { calls, documentHandlers, MarkEdit } = load();
+  MarkEdit.editorView = viewOf('the quick brown fox', [[4, 9]]);
+  documentHandlers.mouseup({});
+  assert.deepEqual(calls.writeText, ['quick']);
+});
+
+test('a mouseup on the document does nothing when the editor view is absent', () => {
+  const { calls, documentHandlers } = load();
+  assert.doesNotThrow(() => documentHandlers.mouseup({}));
+  assert.deepEqual(calls.writeText, []);
+});
+
+test('both handlers running for one gesture copies one time', () => {
+  const { calls, documentHandlers, domHandlers, MarkEdit } = load();
+  const view = viewOf('the quick brown fox', [[4, 9]]);
+  MarkEdit.editorView = view;
+  domHandlers.mouseup({}, view);
+  documentHandlers.mouseup({});
+  assert.deepEqual(calls.writeText, ['quick']);
+});
+
+test('the backstop obeys the off state', () => {
+  const { calls, documentHandlers, MarkEdit } = load({ userSettings: { 'extension.copyOnSelect': { enabled: false } } });
+  MarkEdit.editorView = viewOf('the quick brown fox', [[4, 9]]);
+  documentHandlers.mouseup({});
+  assert.deepEqual(calls.writeText, []);
+});
