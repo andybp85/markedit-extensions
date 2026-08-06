@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const scriptSrc = readFileSync(join(here, '..', 'scripts', 'theme-toggle.js'), 'utf8');
+const extensionDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+const scriptSrc = readFileSync(join(extensionDir, 'theme-toggle.js'), 'utf8');
 
 // Build a sandbox emulating the MarkEdit WebView, load the drop-in script,
 // and return the captured menu item plus spies.

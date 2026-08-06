@@ -1,82 +1,79 @@
-# MarkEdit Theme Toggle
+# MarkEdit Extensions
 
-A [MarkEdit](https://github.com/MarkEdit-app/MarkEdit) user-script plugin that adds
-a toolbar button to swap the editor between your light and dark themes, live — no
-restart.
+User scripts for [MarkEdit](https://github.com/MarkEdit-app/MarkEdit), the native
+macOS Markdown editor. Each extension is a drop-in JavaScript file that MarkEdit
+loads from its script sandbox. There is no build step and there are no runtime
+dependencies.
 
-## Scope
+## Extensions
 
-This button swaps the **editor theme** (the CodeMirror editing surface), live. That
-is the only theme lever MarkEdit exposes to a user script — it calls the same
-internal bridge MarkEdit uses to apply themes.
-
-What it does **not** do, and why:
-
-- **Preview mode is not affected.** The Markdown preview pane themes itself off the
-  native window appearance (`prefers-color-scheme`), which a sandboxed user script
-  cannot change. So this button changes the editor in edit mode but leaves preview
-  as-is.
-- **Native window/toolbar chrome** is not directly controlled (the toolbar tint
-  happens to follow because MarkEdit recolors it from the editor background).
-
-### Want a full light/dark swap (editor **and** preview)?
-
-Use MarkEdit's built-in control: **Settings → General → Appearance → Light / Dark**.
-That flips the app appearance, which drives both the editor (via your configured
-light/dark themes) and the preview together, live. There is no plugin/toolbar hook
-for app appearance — it lives only in Settings — so this script and that setting are
-complementary: the button for a quick editor swap, the setting for an everything
-swap.
+| Extension | What it does |
+| --- | --- |
+| [toggle-dark](extensions/toggle-dark/) | Adds a toolbar button that swaps the editor between your light and dark themes, live. |
 
 ## Install
+
+Install every extension:
 
 ```bash
 ./install.sh
 ```
 
-This copies `scripts/theme-toggle.js` into MarkEdit's sandbox at
-`~/Library/Containers/app.cyan.markedit/Data/Documents/scripts/`.
-
-Then add the toolbar button: merge `settings.snippet.json` into
-`~/Library/Containers/app.cyan.markedit/Data/Documents/settings.json` — specifically
-the `editor.customToolbarItems` array — and restart MarkEdit.
-
-## Configure the themes
-
-By default the toggle swaps `github-light` ↔ `github-dark`. Set your own pair in
-`settings.json`:
-
-```json
-{
-  "extension.themeToggle": { "light": "minimal-light", "dark": "minimal-dark" }
-}
-```
-
-Built-in theme names include `github-*`, `xcode-*`, `solarized-*`, `minimal-*`,
-and `winter-is-coming-*` (each with a `-light` and `-dark` variant).
-
-## Use
-
-After restarting, add the button to the toolbar: **View → Customize Toolbar…**, then
-drag the half-filled-circle **Toggle Theme** item into the toolbar. (A
-`customToolbarItems` entry only makes the item *available*; you place it via
-Customize Toolbar.)
-
-Then click the toolbar button, or use **Extensions → Toggle Light/Dark Theme** from
-the menu bar. The menu item shows a checkmark when the dark theme is active.
-
-## Uninstall
-
-Delete `~/Library/Containers/app.cyan.markedit/Data/Documents/scripts/theme-toggle.js`,
-remove the toolbar entry from `settings.json`, and restart MarkEdit.
-
-## Develop
-
-Run the tests (Node 18+, no dependencies):
+Install one extension:
 
 ```bash
-node --test
+./install.sh toggle-dark
 ```
 
-The plugin stays a plain drop-in script; tests load it in a `node:vm` sandbox with
-stubbed `MarkEdit`/`window` globals.
+The installer copies each extension script into the MarkEdit sandbox at
+`~/Library/Containers/app.cyan.markedit/Data/Documents/scripts/`. To install
+somewhere else, set `MARKEDIT_DOCS` to the MarkEdit `Documents` directory.
+
+Some extensions also need an entry in `settings.json`. The installer prints the
+path of the `settings.snippet.json` file for each one. Merge that file into
+`~/Library/Containers/app.cyan.markedit/Data/Documents/settings.json`. Then
+restart MarkEdit. Read the README of the extension for the details.
+
+## Test
+
+```bash
+npm test
+```
+
+This runs `node --test` over the whole repository. Node 20 or later is
+necessary. There are no dependencies.
+
+The tests load each drop-in script in a `node:vm` sandbox with stub `MarkEdit`
+and `window` globals. The installer tests run `install.sh` against a temporary
+directory, so they never write to the real MarkEdit sandbox.
+
+## Repository layout
+
+```
+install.sh                    installs extensions into the MarkEdit sandbox
+test/                         tests for the installer
+docs/                         design specs and implementation plans
+extensions/<name>/
+    <name>.js                 the drop-in script
+    settings.snippet.json     optional fragment for settings.json
+    README.md                 what the extension does and how to configure it
+    test/                     tests for the extension
+```
+
+## Add an extension
+
+1. Make a directory for the extension under `extensions/`.
+2. Put the drop-in script at the top level of that directory. The installer
+   copies every top-level `.js` file and ignores the subdirectories.
+3. If the extension needs an entry in `settings.json`, add
+   `settings.snippet.json` next to the script.
+4. Write a `README.md` for the extension and put its tests in `test/`.
+5. Add a row to the table of extensions above.
+6. Run `npm test`.
+
+## Scope and limits
+
+MarkEdit gives a user script the editor surface and the menu bar. It does not
+give the script the native window appearance. An extension can therefore change
+the CodeMirror editing surface, but not the Markdown preview pane, which themes
+itself from the system appearance.

@@ -1,0 +1,12 @@
+{
+  "description": "User-script extensions for the MarkEdit Markdown editor",
+  "engines": {
+    "node": ">=20"
+  },
+  "name": "markedit-extensions",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
+  "version": "1.0.0"
+}
