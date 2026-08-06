@@ -21,7 +21,13 @@ function viewOf(doc, ranges) {
 
 // Build a sandbox emulating the MarkEdit WebView, load the drop-in script, and
 // return the callbacks it registered plus spies on everything it can call.
-function load({ clipboardError, createFileResult = true, files = {}, userSettings = {} } = {}) {
+function load({
+  clipboardError,
+  createFileResult = true,
+  files = {},
+  getFileContentError,
+  userSettings = {},
+} = {}) {
   const calls = { alerts: [], created: [], warns: [], writeText: [] };
   const documentHandlers = {};
   const domHandlers = {};
@@ -33,7 +39,7 @@ function load({ clipboardError, createFileResult = true, files = {}, userSetting
     createFile: async (args) => { calls.created.push({ ...args }); return createFileResult; },
     editorView: undefined,
     getDirectoryPath: () => '/docs',
-    getFileContent: async (path) => files[path],
+    getFileContent: async (path) => (getFileContentError ? Promise.reject(getFileContentError) : files[path]),
     showAlert: (alert) => { calls.alerts.push(alert); },
     userSettings,
   };
@@ -258,4 +264,12 @@ test('the toggle still works in memory when the file cannot be written', async (
   assert.equal(menuItem.state().isSelected, false);
   domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
   assert.deepEqual(calls.writeText, []);
+});
+
+test('a rejecting file API alerts once and does not throw', async () => {
+  const { calls, menuItem } = load({ getFileContentError: new Error('disk error') });
+  assert.doesNotThrow(() => menuItem.action());
+  await settled();
+  assert.deepEqual(calls.created, []);
+  assert.equal(calls.alerts.length, 1);
 });

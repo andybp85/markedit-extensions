@@ -60,31 +60,42 @@
     MarkEdit.showAlert({ message, title: MENU_TITLE })
   }
 
-  // Read, merge one key, write back, so every unrelated setting survives.
+  // Read, merge one key, write back, so every unrelated setting survives. The
+  // outer try/catch is not part of the refuse-to-write logic below: it only
+  // catches getFileContent/createFile rejecting outright, which is a failed
+  // write same as a falsy result, and must alert the same way instead of
+  // escaping as an unhandled rejection.
   const persistEnabled = async () => {
-    const path = `${MarkEdit.getDirectoryPath('documents')}/${SETTINGS_FILE}`
-    const raw = await MarkEdit.getFileContent(path)
+    try {
+      const path = `${MarkEdit.getDirectoryPath('documents')}/${SETTINGS_FILE}`
+      const raw = await MarkEdit.getFileContent(path)
 
-    let settings = {}
-    if (typeof raw === 'string' && raw.trim() !== '') {
-      try {
-        settings = JSON.parse(raw)
-      } catch {
-        settings = undefined
+      let settings = {}
+      if (typeof raw === 'string' && raw.trim() !== '') {
+        try {
+          settings = JSON.parse(raw)
+        } catch {
+          settings = undefined
+        }
+        if (!isPlainObject(settings)) {
+          // Writing now would replace every MarkEdit setting with this one key.
+          alertOnce(
+            `${SETTINGS_FILE} could not be read, so the setting was not saved. ` +
+            'Correct the file, or the toggle will reset when you quit MarkEdit.'
+          )
+          return
+        }
       }
-      if (!isPlainObject(settings)) {
-        // Writing now would replace every MarkEdit setting with this one key.
-        alertOnce(`${SETTINGS_FILE} could not be read, so the setting was not saved. Correct the file, or the toggle will reset when you quit MarkEdit.`)
-        return
-      }
-    }
 
-    const current = isPlainObject(settings[SETTINGS_KEY]) ? settings[SETTINGS_KEY] : {}
-    settings[SETTINGS_KEY] = { ...current, enabled }
+      const current = isPlainObject(settings[SETTINGS_KEY]) ? settings[SETTINGS_KEY] : {}
+      settings[SETTINGS_KEY] = { ...current, enabled }
 
-    const written = await MarkEdit.createFile({ overwrites: true, path, string: JSON.stringify(settings, null, 2) })
-    if (!written)
+      const written = await MarkEdit.createFile({ overwrites: true, path, string: JSON.stringify(settings, null, 2) })
+      if (!written)
+        alertOnce(`${SETTINGS_FILE} could not be written, so the setting was not saved. The toggle will reset when you quit MarkEdit.`)
+    } catch {
       alertOnce(`${SETTINGS_FILE} could not be written, so the setting was not saved. The toggle will reset when you quit MarkEdit.`)
+    }
   }
 
   const toggle = () => {
