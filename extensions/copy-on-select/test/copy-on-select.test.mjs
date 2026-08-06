@@ -137,3 +137,49 @@ test('after a failed write, the same text can be copied again', async () => {
   domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
   assert.deepEqual(calls.writeText, ['quick', 'quick']);
 });
+
+test('registers a menu item with the exact title', () => {
+  const { menuItem } = load();
+  assert.ok(menuItem, 'a menu item should be registered');
+  assert.equal(menuItem.title, 'Copy on Select');
+  assert.equal(typeof menuItem.action, 'function');
+  assert.equal(typeof menuItem.state, 'function');
+});
+
+test('the extension is on when the settings key is absent', () => {
+  const { menuItem } = load();
+  assert.equal(menuItem.state().isSelected, true);
+});
+
+test('the extension is off when the settings key says so', () => {
+  const { menuItem } = load({ userSettings: { 'extension.copyOnSelect': { enabled: false } } });
+  assert.equal(menuItem.state().isSelected, false);
+});
+
+test('a mouseup copies nothing while the extension is off', () => {
+  const { calls, domHandlers } = load({ userSettings: { 'extension.copyOnSelect': { enabled: false } } });
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  assert.deepEqual(calls.writeText, []);
+});
+
+test('the menu item toggles the state and the copying', () => {
+  const { calls, domHandlers, menuItem } = load();
+  menuItem.action();
+  assert.equal(menuItem.state().isSelected, false);
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  assert.deepEqual(calls.writeText, []);
+
+  menuItem.action();
+  assert.equal(menuItem.state().isSelected, true);
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  assert.deepEqual(calls.writeText, ['quick']);
+});
+
+test('turning the extension off clears the repeat record', () => {
+  const { calls, domHandlers, menuItem } = load();
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  menuItem.action();
+  menuItem.action();
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  assert.deepEqual(calls.writeText, ['quick', 'quick']);
+});
