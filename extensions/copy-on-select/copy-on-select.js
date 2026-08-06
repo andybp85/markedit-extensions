@@ -13,6 +13,11 @@
   const { MarkEdit } = require('markedit-api')
   const { EditorView } = require('@codemirror/view')
 
+  // The text of the last write. A repeat of it is skipped, which stops a
+  // clipboard manager from filling with identical entries, and which makes the
+  // two mouseup handlers below safe to overlap.
+  let lastCopied = ''
+
   // Join every non-empty range, the way Command-C does for a multi-cursor
   // selection, so the extension and the key produce the same text.
   const selectedText = state => state.selection.ranges
@@ -23,8 +28,16 @@
   const copySelection = view => {
     if (!view) return
     const text = selectedText(view.state)
-    if (text === '') return
-    navigator.clipboard.writeText(text)
+    if (text === '' || text === lastCopied) return
+
+    // Record before the write, not after. The write is asynchronous, so both
+    // handlers could otherwise pass this test for one gesture and write twice.
+    lastCopied = text
+    navigator.clipboard.writeText(text).catch(error => {
+      lastCopied = ''
+      // This can run for every selection, so an alert here would be unusable.
+      console.warn('copy-on-select: could not write to the clipboard.', error)
+    })
   }
 
   MarkEdit.addExtension(EditorView.domEventHandlers({

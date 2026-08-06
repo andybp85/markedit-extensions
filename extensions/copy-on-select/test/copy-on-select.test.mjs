@@ -98,3 +98,42 @@ test('the mouseup handler returns undefined so CodeMirror keeps its default beha
   const { domHandlers } = load();
   assert.equal(domHandlers.mouseup({}, viewOf('abc', [[0, 3]])), undefined);
 });
+
+test('the same text selected twice copies one time', () => {
+  const { calls, domHandlers } = load();
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  assert.deepEqual(calls.writeText, ['quick']);
+});
+
+test('a different selection after a repeat copies again', () => {
+  const { calls, domHandlers } = load();
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[10, 15]]));
+  assert.deepEqual(calls.writeText, ['quick', 'brown']);
+});
+
+test('identical text at a different position still counts as a repeat', () => {
+  const { calls, domHandlers } = load();
+  domHandlers.mouseup({}, viewOf('fox and fox', [[0, 3]]));
+  domHandlers.mouseup({}, viewOf('fox and fox', [[8, 11]]));
+  assert.deepEqual(calls.writeText, ['fox']);
+});
+
+test('a rejected clipboard write does not throw, and it warns', async () => {
+  const { calls, domHandlers } = load({ clipboardError: new Error('denied') });
+  assert.doesNotThrow(() => domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]])));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.warns.length, 1);
+  assert.match(calls.warns[0], /copy-on-select/);
+  assert.equal(calls.alerts.length, 0, 'a per-selection failure must not alert');
+});
+
+test('after a failed write, the same text can be copied again', async () => {
+  const { calls, domHandlers } = load({ clipboardError: new Error('denied') });
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  await new Promise((resolve) => setImmediate(resolve));
+  domHandlers.mouseup({}, viewOf('the quick brown fox', [[4, 9]]));
+  assert.deepEqual(calls.writeText, ['quick', 'quick']);
+});
