@@ -37,6 +37,12 @@ select the same word more than one time.
 Whitespace-only selections and one-character selections copy. Only repeats are
 skipped.
 
+The record shows what the extension wrote. It does not show what is on the
+clipboard, because another application or Command-C can replace the clipboard.
+The extension clears the record on a `blur` of the window and on a `copy` event.
+A selection of the same text then copies again, which keeps the clipboard and the
+record in agreement.
+
 ### On and off
 
 An item in the Extensions menu turns the extension on and off. The item shows a
@@ -77,10 +83,10 @@ only for the extensions that have the file, so the installer needs no change.
 | `copySelection(view)` | Apply the skip rules, write the clipboard, record the text | `selectedText`, `navigator.clipboard` |
 | `persistEnabled(enabled)` | Read `settings.json`, merge one key, write it back | The MarkEdit file APIs |
 | Menu registration | Add the checkmark item, flip the state, start the write | `MarkEdit.addMainMenuItem` |
-| Listener registration | Attach the two `mouseup` handlers | `EditorView`, `copySelection` |
+| Listener registration | Attach the mouse handlers and the clipboard handlers | `EditorView`, `copySelection` |
 
-Module state is two values: `enabled` (boolean) and `lastCopied` (string).
-Everything else is a pure function of its arguments.
+Module state is three values: `enabled` (boolean), `lastCopied` (string) and
+`mouseSelecting` (boolean). Everything else is a pure function of its arguments.
 
 ### Data flow
 
@@ -91,7 +97,8 @@ mouseup ──> copySelection(view)
               ├─ text === ''? ............... return
               ├─ text === lastCopied? ....... return
               ├─ lastCopied = text
-              └─ clipboard.writeText(text) ─> on failure, lastCopied = ''
+              └─ clipboard.writeText(text) ─> on failure, clear the record if it
+                                              still holds this text
 ```
 
 The extension records the text before the write, not after. The write is
@@ -101,7 +108,9 @@ would see the old value and write. The skip rule protects the overlap only when
 the record happens first.
 
 A failed write clears the record, so the next selection of the same text can try
-again.
+again. It clears the record only when the record still holds its own text. A
+later selection can own the record before the failure arrives, and that write did
+not fail.
 
 `selectedText` joins every non-empty range with a newline. It does not read the
 main range alone. Command-C on a multi-cursor selection produces the same text,
@@ -115,7 +124,13 @@ event handler:
 
 ```js
 const { EditorView } = require('@codemirror/view')
-MarkEdit.addExtension(EditorView.domEventHandlers({ mouseup: (event, view) => copySelection(view) }))
+MarkEdit.addExtension(EditorView.domEventHandlers({
+  mousedown: event => { mouseSelecting = event.button === 0 },
+  mouseup: (event, view) => {
+    mouseSelecting = false
+    if (event.button === 0) copySelection(view)
+  }
+}))
 ```
 
 The handler receives the view, so the code reads the selection from its
@@ -129,9 +144,21 @@ The backstop receives no view, because it is not a CodeMirror handler. It reads
 `MarkEdit.editorView` instead, and it returns when that value is absent. This is
 the only place in the extension that reads a global view.
 
-The two handlers can both fire for one gesture. This is harmless: the second call
-sees the same text in `lastCopied` and returns. The skip rule is what makes the
-overlap safe.
+CodeMirror attaches `domEventHandlers` to the editor content, not to the whole
+editor. A `mouseup` on the line-number gutter, on the scroller, or on a panel
+therefore reaches the backstop only. The selection at that moment can be a
+keyboard selection, and a copy of it would break the rule that keyboard
+selections never copy.
+
+`mouseSelecting` prevents this. A `mousedown` on the editor content makes it
+true, and a `mouseup` makes it false again. The backstop copies only while it is
+true. Both handlers also ignore a button other than the primary button, so a
+right-click or a middle-click on a keyboard selection copies nothing.
+
+The two handlers can both fire for one gesture. This is harmless: the editor
+handler clears `mouseSelecting`, and the backstop returns. If the order is
+different, the second call sees the same text in `lastCopied` and returns. The
+skip rule makes the overlap safe.
 
 ### Persistence
 
@@ -155,8 +182,24 @@ all MarkEdit settings of the user with one key. On a parse failure the extension
 shows an alert and leaves the file alone. The toggle still works for the current
 session.
 
-An absent or empty file is not a parse failure. In that case the extension writes
-a new file with the one key.
+An empty file is not a parse failure. In that case the extension writes a new
+file with the one key.
+
+A non-string return is also not proof that the file is absent. The MarkEdit API
+declares `getFileContent(path?: string): Promise<string | undefined>`, and it
+documents `undefined` as "failed", not as "not there". A write after a failed
+read causes the same loss as a write after a parse failure.
+
+The extension therefore proves absence before it writes a new file:
+
+1. Call `MarkEdit.listFiles(MarkEdit.getDirectoryPath('documents'))`.
+2. If the listing fails, or if it holds `settings.json`, show an alert and
+   return. Do not write.
+3. Only a successful listing that does not hold `settings.json` permits a new
+   file.
+
+The read failure and the write failure show different messages, because the two
+give the user different work to do.
 
 ## Error handling
 
@@ -164,6 +207,7 @@ a new file with the one key.
 | --- | --- |
 | `clipboard.writeText` rejects | `console.warn`, then continue. This can occur on every selection, so an alert is not usable. |
 | `settings.json` does not parse | Alert one time for each session. Do not write the file. |
+| The read of `settings.json` fails, and no listing proves absence | Alert one time for each session. Do not write the file. |
 | The write of `settings.json` fails | Alert one time for each session. Keep the state in memory. |
 
 ## Testing

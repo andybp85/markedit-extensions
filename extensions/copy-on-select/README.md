@@ -45,6 +45,10 @@ The extension writes this key when you use the menu item. To set the start state
 }
 ```
 
+If `settings.json` is not valid JSON, the extension does not save the setting. It shows an alert one time and it keeps the file as
+it is. This protects your other settings, because a save would replace the whole file. The menu item still works until you quit
+MarkEdit. Correct the file, then use the menu item again to save the setting.
+
 ## Limits
 
 macOS gives a user script only the general pasteboard. There is no equivalent of the X11 primary selection. Every mouse

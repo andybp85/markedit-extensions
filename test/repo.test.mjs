@@ -20,7 +20,10 @@ test('every extension has a README, a script, and tests', () => {
       readdirSync(dir).some((file) => file.endsWith('.js')),
       `${name} should have a top-level .js script`
     );
-    assert.ok(statSync(join(dir, 'test')).isDirectory(), `${name} should have a test directory`);
+    assert.ok(
+      existsSync(join(dir, 'test')) && statSync(join(dir, 'test')).isDirectory(),
+      `${name} should have a test directory`
+    );
   }
 });
 
