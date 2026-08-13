@@ -1,0 +1,9 @@
+{
+    "semi": false,
+    "arrowParens": "avoid",
+    "singleQuote": true,
+    "tabWidth": 4,
+    "printWidth": 140,
+    "trailingComma": "all",
+    "ignorePatterns": ["package.json", "package-lock.json", "**/*.md"]
+}

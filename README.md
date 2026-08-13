@@ -38,11 +38,22 @@ restart MarkEdit. Read the README of the extension for the details.
 ## Test
 
 ```bash
-npm test
+npm test            # node --test over the whole repository
+npm run lint        # oxlint
+npm run format      # oxfmt — rewrite; format:check to verify only
 ```
 
-This runs `node --test` over the whole repository. Node 20 or later is
-necessary. There are no dependencies.
+Node 20 or later is necessary. The shipped extensions have no runtime
+dependencies — `oxlint` and `oxfmt` are devDependencies, pinned exactly so
+the tool version travels with the config it obeys, and nothing in `src/`
+imports them.
+
+`.oxfmtrc.json` ignores markdown, since oxfmt formats fenced code inside it
+and would rewrite the snippets each extension's README documents.
+
+A pre-commit guard blocks a commit whose *staged* files fail either check,
+and never rewrites anything. `LINT_GUARD_MODE=warn` downgrades it,
+`--no-verify` skips it.
 
 The tests load each drop-in script in a `node:vm` sandbox with stub `MarkEdit`
 and `window` globals. The installer tests run `install.sh` against a temporary
