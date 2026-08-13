@@ -1,9 +1,9 @@
 {
-  "editor.customToolbarItems": [
-    {
-      "title": "Toggle Theme",
-      "icon": "circle.lefthalf.filled",
-      "actionName": "Toggle Light/Dark Theme"
-    }
-  ]
+    "editor.customToolbarItems": [
+        {
+            "title": "Toggle Theme",
+            "icon": "circle.lefthalf.filled",
+            "actionName": "Toggle Light/Dark Theme"
+        }
+    ]
 }
