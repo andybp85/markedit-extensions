@@ -71,9 +71,12 @@ function load({ userSettings = {} } = {}) {
             return this.ranges
         }
     }
+    // define() returns a type, the type's of() makes an effect, and it is the
+    // effect that answers is(type) — the direction the real API reads, and the
+    // one the plugin asks in.
     const StateEffect = {
         define: () => {
-            const type = { is: effect => effect.type === type, of: value => ({ type, value }) }
+            const type = { of: value => ({ is: candidate => candidate === type, value }) }
             return type
         },
     }
@@ -325,4 +328,72 @@ test('a hue in a unit this parser does not know paints nothing', () => {
 test('a percentage hue paints nothing', () => {
     assert.deepEqual(paint('a hsl(50%, 100%, 50%)'), [])
     assert.deepEqual(paint('a hsl(50% 100% 50%)'), [])
+})
+
+// The plugin sees a toggle as a transaction carrying the repaint effect. A
+// dispatch spec may name one effect or several; a real transaction always
+// exposes an array, so the effect the toggle dispatched is wrapped in one here.
+const repaintUpdate = (loaded, view) => ({
+    docChanged: false,
+    transactions: [{ effects: [loaded.MarkEdit.editorView.dispatched.at(-1).effects].flat() }],
+    view,
+    viewportChanged: false,
+})
+
+test('registers a menu item with the exact title', () => {
+    const { menuItem } = load()
+    assert.ok(menuItem, 'a menu item should be registered')
+    assert.equal(menuItem.title, 'Highlight Colors')
+    assert.equal(typeof menuItem.action, 'function')
+    assert.equal(typeof menuItem.state, 'function')
+})
+
+test('the extension is on when the settings key is absent', () => {
+    assert.equal(load().menuItem.state().isSelected, true)
+})
+
+test('the extension is off when the settings key says so', () => {
+    const { menuItem } = load({ userSettings: { 'extension.colorHighlight': { enabled: false } } })
+    assert.equal(menuItem.state().isSelected, false)
+})
+
+test('nothing is painted while the extension is off', () => {
+    assert.deepEqual(paint('a #ff0000', { userSettings: { 'extension.colorHighlight': { enabled: false } } }), [])
+})
+
+test('the menu item flips the state', () => {
+    const { menuItem } = load()
+    menuItem.action()
+    assert.equal(menuItem.state().isSelected, false)
+    menuItem.action()
+    assert.equal(menuItem.state().isSelected, true)
+})
+
+test('a toggle dispatches the repaint effect, and the plugin rebuilds on it', () => {
+    const loaded = load()
+    const view = viewOf('a #ff0000')
+    loaded.MarkEdit.editorView = { dispatch: spec => loaded.MarkEdit.editorView.dispatched.push(spec), dispatched: [] }
+
+    const instance = new loaded.extensions[0](view)
+    assert.equal(instance.decorations.length, 1)
+
+    loaded.menuItem.action()
+    assert.equal(loaded.MarkEdit.editorView.dispatched.length, 1)
+    instance.update(repaintUpdate(loaded, view))
+    assert.deepEqual(instance.decorations, [], 'the flip should take effect at once')
+})
+
+test('a toggle with no editor view does not throw', () => {
+    const { menuItem } = load()
+    assert.doesNotThrow(() => menuItem.action())
+    assert.equal(menuItem.state().isSelected, false)
+})
+
+test('an unrelated transaction does not rebuild', () => {
+    const loaded = load()
+    const view = viewOf('a #ff0000')
+    const instance = new loaded.extensions[0](view)
+    const before = instance.decorations
+    instance.update({ docChanged: false, transactions: [{ effects: [] }], view, viewportChanged: false })
+    assert.equal(instance.decorations, before, 'the set should be the same object, not a rebuild')
 })

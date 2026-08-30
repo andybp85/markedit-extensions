@@ -1,7 +1,8 @@
 /*
  * MarkEdit Color Highlight
  * Paints hex, rgb() and hsl() colour literals with the colour they name.
- * Drop this file into MarkEdit's `scripts/` directory.
+ * Drop this file into MarkEdit's `scripts/` directory. The Extensions menu
+ * carries an item that turns the painting on and off.
  *
  * API: https://github.com/MarkEdit-app/MarkEdit/wiki/Customization#markedit-api
  */
@@ -12,7 +13,14 @@
     // CommonJS modules, not globals.
     const { MarkEdit } = require('markedit-api')
     const { Decoration, ViewPlugin } = require('@codemirror/view')
-    const { RangeSetBuilder } = require('@codemirror/state')
+    const { RangeSetBuilder, StateEffect } = require('@codemirror/state')
+
+    const MENU_TITLE = 'Highlight Colors'
+    const SETTINGS_KEY = 'extension.colorHighlight'
+
+    // Painting is on unless the settings say otherwise, and the setting is read
+    // one time, at load. The menu item below moves this from then on.
+    let enabled = MarkEdit.userSettings?.[SETTINGS_KEY]?.enabled ?? true
 
     // A candidate is a shape that could be a colour. It is deliberately loose:
     // parseColor is what decides. The run of hex digits is greedy, so a
@@ -258,9 +266,14 @@
 
     // Only the visible ranges are walked, so the work is bounded by the screen
     // and not by the size of the document. The background is read one time for
-    // each build, not one time for each colour.
+    // each build that paints, not one time for each colour.
     const buildDecorations = view => {
         const builder = new RangeSetBuilder()
+        // Off is an empty set rather than an absent plugin: this script adds its
+        // extension one time, at load, and never takes it back, so the switch
+        // has to sit where the work is.
+        if (!enabled) return builder.finish()
+
         const background = editorBackground(view)
 
         for (const { from, to } of view.visibleRanges) {
@@ -275,6 +288,17 @@
         return builder.finish()
     }
 
+    // A ViewPlugin repaints only when an update gives it a reason to, and a flip
+    // of the switch changes neither the document nor the viewport. The effect is
+    // that reason and nothing else: it carries no value, and `of` takes one, so
+    // it is handed a null.
+    const repaint = StateEffect.define()
+
+    const rebuilds = update =>
+        update.docChanged ||
+        update.viewportChanged ||
+        update.transactions.some(transaction => transaction.effects.some(effect => effect.is(repaint)))
+
     MarkEdit.addExtension(
         ViewPlugin.fromClass(
             class {
@@ -283,10 +307,26 @@
                 }
 
                 update(update) {
-                    if (update.docChanged || update.viewportChanged) this.decorations = buildDecorations(update.view)
+                    if (rebuilds(update)) this.decorations = buildDecorations(update.view)
                 }
             },
             { decorations: instance => instance.decorations },
         ),
     )
+
+    // The checkmark and the guard in buildDecorations read the same boolean. A
+    // StateField holding it was considered and rejected: it would be a second
+    // place where "is this on?" lives, and the menu item would still need the
+    // module value to draw its checkmark. There is no view before the first
+    // window opens, and then there is nothing painted to repaint either.
+    const toggle = () => {
+        enabled = !enabled
+        MarkEdit.editorView?.dispatch({ effects: repaint.of(null) })
+    }
+
+    MarkEdit.addMainMenuItem({
+        action: toggle,
+        state: () => ({ isSelected: enabled }),
+        title: MENU_TITLE,
+    })
 })()
