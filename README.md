@@ -11,6 +11,7 @@ dependencies.
 | --- | --- |
 | [toggle-dark](extensions/toggle-dark/) | Adds a toolbar button that swaps the editor between your light and dark themes, live. |
 | [copy-on-select](extensions/copy-on-select/) | Copies the selected text to the clipboard when a mouse selection ends, like iTerm2. |
+| [color-highlight](extensions/color-highlight/) | Paints hex, `rgb()` and `hsl()` colours with the colour they name. |
 
 ## Install
 
