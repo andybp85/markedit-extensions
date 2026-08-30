@@ -348,9 +348,10 @@ the CodeMirror modules:
 
 - `Decoration.mark` returns its argument, so a test can read the style string.
 - `RangeSetBuilder` collects `{ from, to, value }` into an array.
-- `ViewPlugin.fromClass` returns the class, so a test can construct the plugin
-  with a fake view.
-- `StateEffect.define` returns an object with an `of` and an `is`.
+- `ViewPlugin.fromClass` returns both of its arguments, so a test can construct
+  the plugin with a fake view and read its decorations through the spec.
+- `StateEffect.define()` returns a type carrying `of`; `of(value)` returns an
+  effect carrying `is`, so the plugin asks `effect.is(type)`.
 - The fake view supplies `state.doc`, `visibleRanges` and a `contentDOM`, and
   the sandbox supplies a `getComputedStyle` that answers with a background.
 

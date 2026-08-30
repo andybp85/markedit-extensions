@@ -291,7 +291,7 @@
     // A ViewPlugin repaints only when an update gives it a reason to, and a flip
     // of the switch changes neither the document nor the viewport. The effect is
     // that reason and nothing else: it carries no value, and `of` takes one, so
-    // it is handed a null.
+    // it is handed an undefined.
     const repaint = StateEffect.define()
 
     const rebuilds = update =>
@@ -317,11 +317,11 @@
     // The checkmark and the guard in buildDecorations read the same boolean. A
     // StateField holding it was considered and rejected: it would be a second
     // place where "is this on?" lives, and the menu item would still need the
-    // module value to draw its checkmark. There is no view before the first
-    // window opens, and then there is nothing painted to repaint either.
+    // module value to draw its checkmark. The optional call is defensive: with
+    // no view there is nothing to dispatch to, and the flip stands on its own.
     const toggle = () => {
         enabled = !enabled
-        MarkEdit.editorView?.dispatch({ effects: repaint.of(null) })
+        MarkEdit.editorView?.dispatch({ effects: repaint.of(undefined) })
     }
 
     MarkEdit.addMainMenuItem({

@@ -80,9 +80,10 @@ function load({ userSettings = {} } = {}) {
             return type
         },
     }
-    // fromClass normally returns an opaque extension. Returning the class lets a
-    // test construct the plugin with a fake view.
-    const ViewPlugin = { fromClass: pluginClass => pluginClass }
+    // fromClass normally returns an opaque extension. Returning both arguments
+    // lets a test construct the plugin with a fake view and reach its
+    // decorations the way the editor does, through the spec.
+    const ViewPlugin = { fromClass: (pluginClass, spec) => ({ pluginClass, spec }) }
 
     const requireFn = name => {
         if (name === 'markedit-api') return { MarkEdit }
@@ -101,12 +102,22 @@ function load({ userSettings = {} } = {}) {
     vm.createContext(sandbox)
     vm.runInContext(scriptSrc, sandbox, { filename: 'color-highlight.js' })
 
-    return { calls, extensions, MarkEdit, menuItem }
+    return { calls, extensions, MarkEdit, menuItem, StateEffect }
 }
 
-// Construct the plugin over a view and flatten its decorations for assertion.
-function decorationsOf({ extensions }, view) {
-    return new extensions[0](view).decorations.map(range => ({
+// Construct the plugin over a view. The class is only half of the extension;
+// the editor reads decorations through the spec, so a test that wants an
+// instance goes through the same pair.
+function pluginOver({ extensions }, view) {
+    const Plugin = extensions[0].pluginClass
+    return new Plugin(view)
+}
+
+// Flatten the decorations the plugin publishes for assertion. Reading them
+// through `spec.decorations` exercises the only channel by which a ViewPlugin
+// hands decorations to the editor.
+function decorationsOf(loaded, view) {
+    return loaded.extensions[0].spec.decorations(pluginOver(loaded, view)).map(range => ({
         from: range.from,
         style: range.value.attributes.style,
         to: range.to,
@@ -330,16 +341,6 @@ test('a percentage hue paints nothing', () => {
     assert.deepEqual(paint('a hsl(50% 100% 50%)'), [])
 })
 
-// The plugin sees a toggle as a transaction carrying the repaint effect. A
-// dispatch spec may name one effect or several; a real transaction always
-// exposes an array, so the effect the toggle dispatched is wrapped in one here.
-const repaintUpdate = (loaded, view) => ({
-    docChanged: false,
-    transactions: [{ effects: [loaded.MarkEdit.editorView.dispatched.at(-1).effects].flat() }],
-    view,
-    viewportChanged: false,
-})
-
 test('registers a menu item with the exact title', () => {
     const { menuItem } = load()
     assert.ok(menuItem, 'a menu item should be registered')
@@ -374,16 +375,20 @@ test('a toggle dispatches the repaint effect, and the plugin rebuilds on it', ()
     const view = viewOf('a #ff0000')
     loaded.MarkEdit.editorView = { dispatch: spec => loaded.MarkEdit.editorView.dispatched.push(spec), dispatched: [] }
 
-    const instance = new loaded.extensions[0](view)
+    const instance = pluginOver(loaded, view)
     assert.equal(instance.decorations.length, 1)
 
     loaded.menuItem.action()
     assert.equal(loaded.MarkEdit.editorView.dispatched.length, 1)
-    instance.update(repaintUpdate(loaded, view))
+    // The plugin sees the toggle as a transaction carrying the repaint effect. A
+    // dispatch spec may name one effect or several; a real transaction always
+    // exposes an array, so what the toggle dispatched is wrapped in one here.
+    const effects = [loaded.MarkEdit.editorView.dispatched.at(-1).effects].flat()
+    instance.update({ docChanged: false, transactions: [{ effects }], view, viewportChanged: false })
     assert.deepEqual(instance.decorations, [], 'the flip should take effect at once')
 })
 
-test('a toggle with no editor view does not throw', () => {
+test('a toggle with no editor view flips the state without throwing', () => {
     const { menuItem } = load()
     assert.doesNotThrow(() => menuItem.action())
     assert.equal(menuItem.state().isSelected, false)
@@ -392,8 +397,11 @@ test('a toggle with no editor view does not throw', () => {
 test('an unrelated transaction does not rebuild', () => {
     const loaded = load()
     const view = viewOf('a #ff0000')
-    const instance = new loaded.extensions[0](view)
+    const instance = pluginOver(loaded, view)
     const before = instance.decorations
-    instance.update({ docChanged: false, transactions: [{ effects: [] }], view, viewportChanged: false })
+    // An effect of another type reaches the plugin the same way the repaint
+    // effect does, so only `is` tells the two apart.
+    const unrelated = loaded.StateEffect.define().of(undefined)
+    instance.update({ docChanged: false, transactions: [{ effects: [unrelated] }], view, viewportChanged: false })
     assert.equal(instance.decorations, before, 'the set should be the same object, not a rebuild')
 })
