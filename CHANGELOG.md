@@ -11,6 +11,15 @@ extensions read.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-30
+
+### Added
+
+- `extensions/color-highlight`: paints hex, `rgb()` and `hsl()` colour tokens with the colour they name, and sets the
+  text of the token to black or white by WCAG relative luminance. A hex token that opens a line is left alone, because
+  that position belongs to a Markdown heading. A menu item turns the extension on and off, and the state is kept in the
+  `extension.colorHighlight` key of `settings.json`.
+
 ## [1.1.0] - 2026-08-06
 
 ### Added
