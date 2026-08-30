@@ -18,20 +18,83 @@
     // parseColor is what decides. The run of hex digits is greedy, so a
     // candidate is never a prefix cut out of the middle of a longer run — it
     // always takes the whole run, however long, and parseColor rejects the
-    // lengths it does not recognise.
-    const CANDIDATE = /#[0-9a-f]+/gi
+    // lengths it does not recognise. `\b` before the functional forms stops
+    // `srgb(` from matching, and `[^()\n]*` keeps a candidate inside one line
+    // and refuses a nested parenthesis such as `calc()`.
+    const CANDIDATE = /#[0-9a-f]+|\b(?:rgb|hsl)a?\([^()\n]*\)/gi
 
     const HEX_LENGTHS = new Set([3, 6])
 
-    // Returns { a, b, g, r } with r, g and b in 0..255 and a in 0..1, or
-    // undefined. Everything downstream therefore holds a real colour.
-    const parseColor = source => {
+    const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
+
+    // One argument of a functional form: an optional sign, digits with an
+    // optional decimal point, and an optional percent. Anything else — `none`, a
+    // unit this parser does not know, a nested call — is not a number here, and
+    // a token that is not a colour is left alone rather than painted wrongly.
+    const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(%?)$/
+
+    const parseNumber = token => {
+        const match = NUMBER.exec(token)
+        if (match === null) return undefined
+        return { isPercent: match[1] === '%', value: Number.parseFloat(token) }
+    }
+
+    // Split the inside of a functional form into three channels and an alpha.
+    // The alpha comes after a slash in the current syntax and as a fourth comma
+    // argument in the old one, and both are accepted.
+    const parseArgs = inner => {
+        const slash = inner.indexOf('/')
+        const head = slash === -1 ? inner : inner.slice(0, slash)
+        let alpha = slash === -1 ? undefined : inner.slice(slash + 1).trim()
+
+        const parts = (head.includes(',') ? head.split(',') : head.trim().split(/\s+/)).map(part => part.trim())
+        if (parts.length === 4 && alpha === undefined) alpha = parts.pop()
+
+        if (parts.length !== 3 || parts.some(part => part === '') || alpha === '') return undefined
+        return { alpha, channels: parts }
+    }
+
+    const parseAlpha = token => {
+        if (token === undefined) return 1
+        const number = parseNumber(token)
+        if (number === undefined) return undefined
+        return clamp(number.isPercent ? number.value / 100 : number.value, 0, 1)
+    }
+
+    // A percentage is of 255; a plain number is already 0..255.
+    const rgbChannel = token => {
+        const number = parseNumber(token)
+        if (number === undefined) return undefined
+        return Math.round(clamp(number.isPercent ? (number.value / 100) * 255 : number.value, 0, 255))
+    }
+
+    const parseHex = source => {
         const digits = source.slice(1)
         if (!HEX_LENGTHS.has(digits.length)) return undefined
         // The short form doubles each digit: #f8c is #ff88cc.
         const full = digits.length === 3 ? [...digits].map(digit => digit + digit).join('') : digits
         const channel = index => Number.parseInt(full.slice(index * 2, index * 2 + 2), 16)
         return { a: 1, b: channel(2), g: channel(1), r: channel(0) }
+    }
+
+    // Returns { a, b, g, r } with r, g and b in 0..255 and a in 0..1, or
+    // undefined. Everything downstream therefore holds a real colour.
+    const parseColor = source => {
+        if (source.startsWith('#')) return parseHex(source)
+
+        const open = source.indexOf('(')
+        if (open === -1 || !source.endsWith(')')) return undefined
+        const form = source.slice(0, open).toLowerCase()
+
+        const args = parseArgs(source.slice(open + 1, -1))
+        if (args === undefined) return undefined
+        const a = parseAlpha(args.alpha)
+        if (a === undefined) return undefined
+
+        if (form !== 'rgb' && form !== 'rgba') return undefined
+        const [r, g, b] = args.channels.map(rgbChannel)
+        if (r === undefined || g === undefined || b === undefined) return undefined
+        return { a: 1, b, g, r }
     }
 
     const linearize = value => {
@@ -63,16 +126,24 @@
         for (let match = CANDIDATE.exec(line); match !== null; match = CANDIDATE.exec(line)) {
             const source = match[0]
             const index = match.index
-            // A lookbehind in the pattern would be shorter, but the WebView that
-            // runs this script is not guaranteed to have one.
-            if (opensLine(line, index) || /[\w#]/.test(line[index - 1] ?? '')) continue
-            // CANDIDATE only matches hex digits, so a non-hex letter right after
-            // the match (#abcdefgh matches #abcdef, then stops at "g") is not
-            // absorbed into it — the match ends there regardless. A word
-            // character in that position means the digit run is glued to more
-            // identifier text rather than standing on its own, so it is still
-            // not a colour literal.
-            if (/[\w#]/.test(line[index + source.length] ?? '')) continue
+            const isHex = source[0] === '#'
+            // Both guards exist to keep hex digits from being mistaken for a
+            // heading marker or an identifier fragment. A functional form has
+            // neither problem: `\b` in CANDIDATE already refuses one glued to a
+            // word (srgb(...) never matches), and a form opening the line is a
+            // real colour, not a heading. So both guards apply to hex only.
+            if (isHex) {
+                // A lookbehind in the pattern would be shorter, but the WebView
+                // that runs this script is not guaranteed to have one.
+                if (opensLine(line, index) || /[\w#]/.test(line[index - 1] ?? '')) continue
+                // CANDIDATE only matches hex digits, so a non-hex letter right
+                // after the match (#abcdefgh matches #abcdef, then stops at "g")
+                // is not absorbed into it — the match ends there regardless. A
+                // word character in that position means the digit run is glued
+                // to more identifier text rather than standing on its own, so it
+                // is still not a colour literal.
+                if (/[\w#]/.test(line[index + source.length] ?? '')) continue
+            }
             const color = parseColor(source)
             if (color !== undefined) found.push({ color, from: index, to: index + source.length })
         }

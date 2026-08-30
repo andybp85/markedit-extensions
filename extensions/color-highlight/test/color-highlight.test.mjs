@@ -190,3 +190,40 @@ test('a hex token after a list marker or a word on the same line paints', () => 
     assert.equal(paint('The brand is #ff0000').length, 1)
     assert.equal(paint('color: #ff0000;').length, 1)
 })
+
+test('rgb() paints, in the comma syntax and in the space syntax', () => {
+    assert.deepEqual(paint('a rgb(255, 0, 0)'), [{ from: 2, style: style('rgba(255, 0, 0, 1)', '#000000'), to: 16 }])
+    assert.equal(paint('a rgb(255 0 0)')[0].style, style('rgba(255, 0, 0, 1)', '#000000'))
+})
+
+test('rgb() that opens a line paints, because the heading rule is for hex only', () => {
+    assert.equal(paint('rgb(255, 0, 0)').length, 1)
+})
+
+test('percentage channels paint the same colour as the equivalent numbers', () => {
+    assert.equal(paint('a rgb(100%, 0%, 0%)')[0].style, paint('a rgb(255, 0, 0)')[0].style)
+})
+
+test('a channel out of range is clamped, not refused', () => {
+    assert.equal(paint('a rgb(300, -20, 0)')[0].style, style('rgba(255, 0, 0, 1)', '#000000'))
+})
+
+test('a functional form with the wrong number of arguments paints nothing', () => {
+    assert.deepEqual(paint('a rgb(1, 2)'), [])
+    assert.deepEqual(paint('a rgb(1, 2, 3, 4, 5)'), [])
+    assert.deepEqual(paint('a rgb()'), [])
+})
+
+test('a functional form with an unparseable channel paints nothing', () => {
+    assert.deepEqual(paint('a rgb(a, b, c)'), [])
+    assert.deepEqual(paint('a rgb(none, 0, 0)'), [])
+    assert.deepEqual(paint('a rgb(calc(1px), 0, 0)'), [])
+})
+
+test('a word ending in rgb is not a functional form', () => {
+    assert.deepEqual(paint('a srgb(255, 0, 0)'), [])
+})
+
+test('uppercase RGB paints', () => {
+    assert.equal(paint('a RGB(255, 0, 0)')[0].style, style('rgba(255, 0, 0, 1)', '#000000'))
+})
