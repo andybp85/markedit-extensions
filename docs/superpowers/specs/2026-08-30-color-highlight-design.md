@@ -58,9 +58,25 @@ not parse is left alone. This matters most for hex:
 The same rule holds for the functional forms. `rgb(1, 2)` and `hsl(a, b, c)`
 paint nothing.
 
-One ambiguity is accepted rather than solved. A Markdown anchor such as
-`#abc` or `#face` is a run of hex digits, and it paints. There is no way to tell
-it from a color without knowing what the author meant.
+A hex token is also dropped when it is the first thing on its line, ignoring
+the indentation. In Markdown a line that opens with `#` is a heading, and a run
+of hex digits in that position is far more often a heading or an anchor than a
+color. A real color literal almost never starts a line: it follows a property
+name, an equals sign, a word, or a list marker.
+
+```text
+#face                     paints nothing, it opens the line
+    #face                 paints nothing, indentation does not count
+- #face                   paints, the list marker comes first
+The brand is #face        paints
+color: #face;             paints
+```
+
+The rule is for hex only. `rgb(255, 0, 0)` at the start of a line is not
+heading-shaped and is not ambiguous, so it paints.
+
+The cost is a list of bare colors, one to a line, which paints nothing. That is
+the price of never painting a heading, and it was chosen deliberately.
 
 ### On and off
 
@@ -114,9 +130,9 @@ directly.
 | `hslToRgb(h, s, l)` | Convert one hue, saturation and lightness to red, green and blue. Pure function. | Nothing |
 | `luminance(color)` | The WCAG relative luminance of an opaque color. Pure function. | Nothing |
 | `contrastColor(color, background)` | Choose black or white for the text. Pure function. | `luminance` |
-| `findColors(text)` | Every parsed color in a piece of text, with its offsets. Pure function. | `findCandidates`, `parseColor` |
+| `findColors(line)` | Every parsed color in one line, with its offsets into that line. Pure function. | `findCandidates`, `parseColor` |
 | `editorBackground(view)` | The background color behind the text, or white | `getComputedStyle`, `parseColor` |
-| `buildDecorations(view)` | Walk the visible ranges and build the decoration set | `findColors`, `contrastColor`, `editorBackground` |
+| `buildDecorations(view)` | Walk the lines of the visible ranges and build the decoration set | `findColors`, `contrastColor`, `editorBackground` |
 | `persistEnabled()` | Read `settings.json`, merge one key, write it back | The MarkEdit file APIs |
 | Menu registration | Add the checkmark item, flip the state, force a rebuild | `MarkEdit.addMainMenuItem` |
 
@@ -135,15 +151,18 @@ It is deliberately loose. It finds a run of hex digits of any length, and it
 finds anything between the parentheses that is not a parenthesis and not a
 newline. `parseColor` is what decides.
 
-A hex candidate is dropped when the character before the `#` is a word
-character or another `#`. The check reads the character at `index - 1` of the
-text. It does not use a lookbehind in the pattern, because the WebView that runs
-the script is not guaranteed to have one.
+A sweep runs over one line of the document. This is what makes the two rules
+that reject a hex candidate well defined:
 
-The text of a sweep is one visible range, so a match at offset `0` has no
-character before it. That counts as no word character, and the candidate is
-kept. A visible range begins at the top of the screen, where a token is far more
-likely to be cut off than to be preceded by a word.
+- **A word character before the `#`.** The check reads the character at
+  `index - 1` of the line. It does not use a lookbehind in the pattern, because
+  the WebView that runs the script is not guaranteed to have one.
+- **First on the line.** The candidate starts the line when everything at a
+  lower index is whitespace.
+
+Neither rule can be stated against a slice of arbitrary text, because a slice
+does not know where its line began. Sweeping a line at a time removes the
+question instead of answering it.
 
 The regular expression is greedy on the hex digits, so `#abcdefgh` yields the
 candidate `#abcdefgh`, which has 8 letters, two of which are not hex digits, and
@@ -163,11 +182,11 @@ For a functional form, `parseArgs` splits the inside:
 
 1. If the text holds a `/`, the part after it is the alpha, and the part before
    it is the channels.
-2. If the channels hold a comma, split on commas. Otherwise split on runs of
+1. If the channels hold a comma, split on commas. Otherwise split on runs of
    whitespace.
-3. If that gives four parts and no alpha was found in step 1, the fourth part is
-   the alpha.
-4. Three channels must remain. Any other count is a failure.
+1. If that gives four parts and no alpha was found in the first step, the fourth
+   part is the alpha.
+1. Three channels must remain. Any other count is a failure.
 
 A single value must match `^[+-]?(?:\d+\.?\d*|\.\d+)%?$`, with an optional `deg`
 allowed on a hue. `none`, `rad`, `turn` and `calc()` are failures. They are rare
@@ -233,9 +252,26 @@ changes, when the viewport changes, or when the toggle fires. It walks
 `view.visibleRanges`, so the work is bounded by what is on the screen and not by
 the size of the document.
 
-For each visible range, the plugin slices the text, calls `findColors`, and adds
-one `Decoration.mark` for each result. The matches of a sweep come out in order
-and do not overlap, which is what `RangeSetBuilder` requires.
+Inside a visible range it walks one line at a time, with `doc.lineAt`, and
+calls `findColors` on the text of each line. The offsets that come back are
+relative to the line, so the plugin adds `line.from` to each before it adds the
+decoration:
+
+```js
+for (const { from, to } of view.visibleRanges) {
+    let pos = from
+    while (pos <= to) {
+        const line = view.state.doc.lineAt(pos)
+        for (const found of findColors(line.text)) {
+            builder.add(line.from + found.from, line.from + found.to, mark(found.color, background))
+        }
+        pos = line.to + 1
+    }
+}
+```
+
+Lines come out in order, and the matches within a line come out in order and do
+not overlap, which is what `RangeSetBuilder` requires.
 
 The mark carries an inline style:
 
@@ -274,9 +310,9 @@ The extension reads the key from `MarkEdit.userSettings` at load, and writes the
 file on each toggle, with the read-merge-write of `copy-on-select`:
 
 1. Read `settings.json` with `MarkEdit.getFileContent`.
-2. Parse it.
-3. Merge the `extension.colorHighlight` key. Leave every other key as it is.
-4. Write it with `MarkEdit.createFile({ overwrites: true })`.
+1. Parse it.
+1. Merge the `extension.colorHighlight` key. Leave every other key as it is.
+1. Write it with `MarkEdit.createFile({ overwrites: true })`.
 
 **CAUTION: If `settings.json` exists but does not parse, do not write the file.**
 Treating an unreadable file as an empty object replaces every MarkEdit setting
@@ -325,30 +361,34 @@ rather than exported, so the tests stay honest about what the extension does.
 Cases:
 
 1. Each hex length, 3, 4, 6 and 8, paints with the expected background.
-2. A hex run of another length paints nothing.
-3. A hex token after a word character paints nothing.
-4. `rgb()` paints, in comma form and in space form.
-5. `rgba()` paints, with the alpha in the fourth argument and after a slash.
-6. Percentage channels paint the same color as the equivalent numbers.
-7. `hsl()` converts correctly, at several hues and at zero saturation.
-8. A hue written with `deg` paints, and one written with `turn` paints nothing.
-9. A functional form with the wrong number of arguments paints nothing.
-10. A channel out of range is clamped, not refused.
-11. Black text is chosen for a light color and white text for a dark one.
-12. The choice flips at the luminance threshold, tested from both sides.
-13. A color with alpha composites over the background before the choice, and
-    the same color chooses differently on a light and on a dark background.
-14. Several colors on one line produce several decorations, in order.
-15. Only the visible ranges are scanned.
-16. The extension paints nothing while it is off.
-17. The menu item has the title "Highlight Colors" and reports the state.
-18. The toggle dispatches the effect, and does not throw when there is no view.
-19. A toggle writes `settings.json` with the merged key and the unrelated keys
-    intact.
-20. A malformed `settings.json` produces an alert and no write.
-21. An unreadable `settings.json` that a listing shows to be present produces an
-    alert and no write.
-22. A failed write produces an alert and leaves the toggle working in memory.
+1. A hex run of another length paints nothing.
+1. A hex token after a word character paints nothing.
+1. A hex token that opens a line paints nothing, with and without indentation
+   before it, and one after a list marker or a word on the same line paints.
+1. `rgb()` that opens a line paints, because the rule is for hex only.
+1. `rgb()` paints, in comma form and in space form.
+1. `rgba()` paints, with the alpha in the fourth argument and after a slash.
+1. Percentage channels paint the same color as the equivalent numbers.
+1. `hsl()` converts correctly, at several hues and at zero saturation.
+1. A hue written with `deg` paints, and one written with `turn` paints nothing.
+1. A functional form with the wrong number of arguments paints nothing.
+1. A channel out of range is clamped, not refused.
+1. Black text is chosen for a light color and white text for a dark one.
+1. The choice flips at the luminance threshold, tested from both sides.
+1. A color with alpha composites over the background before the choice, and the
+   same color chooses differently on a light and on a dark background.
+1. Several colors on one line produce several decorations, in order.
+1. A color on a line that is not visible is not scanned, and the offsets of a
+   color on a later line are still correct.
+1. The extension paints nothing while it is off.
+1. The menu item has the title "Highlight Colors" and reports the state.
+1. The toggle dispatches the effect, and does not throw when there is no view.
+1. A toggle writes `settings.json` with the merged key and the unrelated keys
+   intact.
+1. A malformed `settings.json` produces an alert and no write.
+1. An unreadable `settings.json` that a listing shows to be present produces an
+   alert and no write.
+1. A failed write produces an alert and leaves the toggle working in memory.
 
 ## Repository updates
 
