@@ -1,6 +1,6 @@
 /*
  * MarkEdit Color Highlight
- * Paints every hex, rgb() and hsl() colour with the colour it names.
+ * Paints hex, rgb() and hsl() colour literals with the colour they name.
  * Drop this file into MarkEdit's `scripts/` directory.
  *
  * API: https://github.com/MarkEdit-app/MarkEdit/wiki/Customization#markedit-api
@@ -83,6 +83,40 @@
         return { a: full.length === 8 ? roundAlpha(channel(3) / 255) : 1, b: channel(2), g: channel(1), r: channel(0) }
     }
 
+    // The chroma form of the CSS conversion. `h` is degrees, `s` and `l` are
+    // 0..1. `chroma` is the spread between the largest and the smallest
+    // channel, `sector` places the hue on one of the six ramps between the
+    // primaries and the secondaries, and `second` is the middle channel, which
+    // rises or falls across the sector the hue landed on. Adding `base` to all
+    // three puts the midpoint of the largest and the smallest back at `l`.
+    const hslToRgb = (h, s, l) => {
+        const chroma = (1 - Math.abs(2 * l - 1)) * s
+        const sector = (((h % 360) + 360) % 360) / 60
+        const second = chroma * (1 - Math.abs((sector % 2) - 1))
+        const base = l - chroma / 2
+
+        const [r, g, b] =
+            sector < 1
+                ? [chroma, second, 0]
+                : sector < 2
+                  ? [second, chroma, 0]
+                  : sector < 3
+                    ? [0, chroma, second]
+                    : sector < 4
+                      ? [0, second, chroma]
+                      : sector < 5
+                        ? [second, 0, chroma]
+                        : [chroma, 0, second]
+
+        return { b: Math.round((b + base) * 255), g: Math.round((g + base) * 255), r: Math.round((r + base) * 255) }
+    }
+
+    // A hue is degrees, written bare or with `deg`. Stripping that suffix leaves
+    // a bare number; any other angle unit stays in the token and NUMBER refuses
+    // it, so `rad`, `grad` and `turn` — rare in a hand-written colour — leave
+    // the token unpainted rather than painted as some other colour.
+    const parseHue = token => parseNumber(token.replace(/deg$/i, ''))
+
     // Returns { a, b, g, r } with r, g and b in 0..255 and a in 0..1, or
     // undefined. Everything downstream therefore holds a real colour.
     const parseColor = source => {
@@ -97,10 +131,20 @@
         const a = parseAlpha(args.alpha)
         if (a === undefined) return undefined
 
-        if (form !== 'rgb' && form !== 'rgba') return undefined
-        const [r, g, b] = args.channels.map(rgbChannel)
-        if (r === undefined || g === undefined || b === undefined) return undefined
-        return { a, b, g, r }
+        if (form === 'rgb' || form === 'rgba') {
+            const [r, g, b] = args.channels.map(rgbChannel)
+            if (r === undefined || g === undefined || b === undefined) return undefined
+            return { a, b, g, r }
+        }
+
+        if (form !== 'hsl' && form !== 'hsla') return undefined
+        const hue = parseHue(args.channels[0])
+        const saturation = parseNumber(args.channels[1])
+        const lightness = parseNumber(args.channels[2])
+        if (hue === undefined || saturation === undefined || lightness === undefined) return undefined
+        // Saturation and lightness are read as 0..100 whether or not the percent
+        // is written, so `hsl(0 100 50)` is the colour `hsl(0, 100%, 50%)` names.
+        return { a, ...hslToRgb(hue.value, clamp(saturation.value, 0, 100) / 100, clamp(lightness.value, 0, 100) / 100) }
     }
 
     const linearize = value => {
@@ -118,8 +162,8 @@
     // What the eye sees: a transparent colour laid over what is behind it. An
     // opaque colour is already what the eye sees, so that branch skips the
     // arithmetic and copies the three channels. Both branches return the same
-    // shape and neither carries an alpha: the result sits on an opaque editor
-    // background, so it is opaque, and an alpha key would say nothing.
+    // shape and neither carries an alpha: the return is a final composited
+    // value, not a colour still waiting to be laid over something.
     const over = (color, background) =>
         color.a >= 1
             ? { b: color.b, g: color.g, r: color.r }

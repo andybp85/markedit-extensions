@@ -285,3 +285,36 @@ test('an editor with no usable background is treated as white', () => {
     const painted = paint('a rgba(255, 255, 255, 0.1)', { backgrounds: ['transparent'] })
     assert.equal(painted[0].style, style('rgba(255, 255, 255, 0.1)', '#000000'))
 })
+
+test('hsl() converts the primaries and the secondaries', () => {
+    assert.equal(paint('a hsl(0, 100%, 50%)')[0].style, style('rgba(255, 0, 0, 1)', '#000000'))
+    assert.equal(paint('a hsl(120, 100%, 50%)')[0].style, style('rgba(0, 255, 0, 1)', '#000000'))
+    assert.equal(paint('a hsl(240, 100%, 50%)')[0].style, style('rgba(0, 0, 255, 1)', '#ffffff'))
+    assert.equal(paint('a hsl(60, 100%, 50%)')[0].style, style('rgba(255, 255, 0, 1)', '#000000'))
+})
+
+test('zero saturation is a grey of the lightness', () => {
+    assert.equal(paint('a hsl(0, 0%, 50%)')[0].style, style('rgba(128, 128, 128, 1)', '#000000'))
+    assert.equal(paint('a hsl(210, 0%, 0%)')[0].style, style('rgba(0, 0, 0, 1)', '#ffffff'))
+    assert.equal(paint('a hsl(210, 0%, 100%)')[0].style, style('rgba(255, 255, 255, 1)', '#000000'))
+})
+
+test('a hue outside 0..360 wraps in both directions', () => {
+    assert.equal(paint('a hsl(480, 100%, 50%)')[0].style, paint('a hsl(120, 100%, 50%)')[0].style)
+    assert.equal(paint('a hsl(-120, 100%, 50%)')[0].style, paint('a hsl(240, 100%, 50%)')[0].style)
+})
+
+test('the space syntax, a deg hue, and an alpha all paint', () => {
+    assert.equal(paint('a hsl(0deg 100% 50%)')[0].style, style('rgba(255, 0, 0, 1)', '#000000'))
+    assert.equal(paint('a hsl(0deg 100% 50% / 50%)')[0].style, style('rgba(255, 0, 0, 0.5)', '#000000'))
+    assert.equal(paint('a hsla(0, 100%, 50%, 0.5)')[0].style, style('rgba(255, 0, 0, 0.5)', '#000000'))
+})
+
+test('saturation and lightness read the same with or without the percent', () => {
+    assert.equal(paint('a hsl(0 100 50)')[0].style, paint('a hsl(0, 100%, 50%)')[0].style)
+})
+
+test('a hue in a unit this parser does not know paints nothing', () => {
+    assert.deepEqual(paint('a hsl(0.5turn, 100%, 50%)'), [])
+    assert.deepEqual(paint('a hsl(1rad, 100%, 50%)'), [])
+})
