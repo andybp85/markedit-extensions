@@ -26,7 +26,8 @@
     const WRITE_FAILURE = `${SETTINGS_FILE} could not be written, so the setting was not saved. The toggle will reset when you quit MarkEdit.`
 
     // Painting is on unless the settings say otherwise, and the setting is read
-    // one time, at load. The menu item below moves this from then on.
+    // one time, at load. The menu item below moves this from then on, writing
+    // the new value back to settings.json so it survives past this session.
     let enabled = MarkEdit.userSettings?.[SETTINGS_KEY]?.enabled ?? true
 
     // One alert for each session. A user who toggles the item against a broken
@@ -364,9 +365,9 @@
             const raw = await MarkEdit.getFileContent(path)
 
             if (typeof raw !== 'string') {
-                // The API returns undefined when the read fails, not when the file is
-                // absent. A write now could replace a real settings.json with this one
-                // key, so refuse until a listing proves that the file is not there.
+                // undefined means the read failed, which is not proof that the file
+                // is absent. A write now could replace a real settings.json with this
+                // one key, so refuse until a listing proves that the file is not there.
                 if (!(await settingsAbsent(directory))) {
                     alertOnce(READ_FAILURE)
                     return

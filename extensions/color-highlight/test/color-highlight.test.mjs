@@ -440,6 +440,7 @@ test('a toggle writes settings.json and keeps the unrelated keys', async () => {
     assert.deepEqual(written['extension.colorHighlight'], { enabled: false })
     assert.equal(written['editor.fontSize'], 14)
     assert.deepEqual(written['extension.copyOnSelect'], { enabled: true })
+    assert.deepEqual(calls.alerts, [], 'a successful persist must stay silent')
 })
 
 test('a toggle keeps the unrelated keys inside its own settings object', async () => {
@@ -448,6 +449,13 @@ test('a toggle keeps the unrelated keys inside its own settings object', async (
     menuItem.action()
     await settled()
     assert.deepEqual(JSON.parse(calls.created[0].string)['extension.colorHighlight'], { enabled: false, note: 'keep me' })
+})
+
+test('an empty settings.json is written as holding just the one key', async () => {
+    const { calls, menuItem } = load({ files: { '/docs/settings.json': '' } })
+    menuItem.action()
+    await settled()
+    assert.deepEqual(JSON.parse(calls.created[0].string), { 'extension.colorHighlight': { enabled: false } })
 })
 
 test('an absent settings.json is written as a new file', async () => {
@@ -484,8 +492,8 @@ test('a settings.json holding a non-object alerts and writes nothing', async () 
     assert.equal(calls.alerts.length, 1)
 })
 
-// getFileContent gives undefined when the read fails, not when the file is
-// absent. A write then replaces every MarkEdit setting with this one key.
+// undefined means the read failed, which is not proof that the file is
+// absent. A write then would replace every MarkEdit setting with this one key.
 test('an unreadable settings.json that a listing shows to be present alerts and writes nothing', async () => {
     const { calls, menuItem } = load({ listing: ['settings.json'] })
     menuItem.action()
