@@ -3,8 +3,9 @@
 title: 'color-highlight extension: paint hex/rgb/hsl colors in the editor'
 status: in-progress
 type: feature
+priority: normal
 created_at: 2026-08-30T18:16:34Z
-updated_at: 2026-08-30T18:16:34Z
+updated_at: 2026-08-30T18:25:23Z
 ---
 
 MarkEdit extension that paints CSS color tokens (#hex 3/4/6/8, rgb()/rgba(), hsl()/hsla()) with the color as background and black or white text chosen by WCAG relative luminance.
@@ -13,8 +14,8 @@ Approved design: pure core (findCandidates / parseColor / contrastColor) + thin 
 
 ## Todo
 
-- [ ] Write design spec to docs/superpowers/specs/2026-08-30-color-highlight-design.md
-- [ ] Spec self-review
-- [ ] User reviews spec
+- [x] Write design spec to docs/superpowers/specs/2026-08-30-color-highlight-design.md
+- [x] Spec self-review
+- [x] User reviews spec
 - [ ] Write implementation plan
 - [ ] Implement
