@@ -21,14 +21,16 @@
     // lengths it does not recognise.
     const CANDIDATE = /#[0-9a-f]+/gi
 
-    const HEX_LENGTHS = new Set([6])
+    const HEX_LENGTHS = new Set([3, 6])
 
     // Returns { a, b, g, r } with r, g and b in 0..255 and a in 0..1, or
     // undefined. Everything downstream therefore holds a real colour.
     const parseColor = source => {
         const digits = source.slice(1)
         if (!HEX_LENGTHS.has(digits.length)) return undefined
-        const channel = index => Number.parseInt(digits.slice(index * 2, index * 2 + 2), 16)
+        // The short form doubles each digit: #f8c is #ff88cc.
+        const full = digits.length === 3 ? [...digits].map(digit => digit + digit).join('') : digits
+        const channel = index => Number.parseInt(full.slice(index * 2, index * 2 + 2), 16)
         return { a: 1, b: channel(2), g: channel(1), r: channel(0) }
     }
 
@@ -46,6 +48,12 @@
 
     const contrastColor = color => (luminance(color) > THRESHOLD ? '#000000' : '#ffffff')
 
+    // Everything before `index` is whitespace, so the token opens the line. In
+    // Markdown that position belongs to a heading or an anchor far more often
+    // than to a colour, and nothing in the text can tell them apart. A real
+    // colour literal follows a property name, a word, or a list marker.
+    const opensLine = (line, index) => line.slice(0, index).trim() === ''
+
     // A sweep runs over one line, which is what makes the rules that reject a
     // candidate expressible at all: neither "first on the line" nor "preceded by
     // a word character" means anything against a slice of arbitrary text.
@@ -53,8 +61,20 @@
         const found = []
         CANDIDATE.lastIndex = 0
         for (let match = CANDIDATE.exec(line); match !== null; match = CANDIDATE.exec(line)) {
-            const color = parseColor(match[0])
-            if (color !== undefined) found.push({ color, from: match.index, to: match.index + match[0].length })
+            const source = match[0]
+            const index = match.index
+            // A lookbehind in the pattern would be shorter, but the WebView that
+            // runs this script is not guaranteed to have one.
+            if (opensLine(line, index) || /[\w#]/.test(line[index - 1] ?? '')) continue
+            // CANDIDATE only matches hex digits, so a non-hex letter right after
+            // the match (#abcdefgh matches #abcdef, then stops at "g") is not
+            // absorbed into it — the match ends there regardless. A word
+            // character in that position means the digit run is glued to more
+            // identifier text rather than standing on its own, so it is still
+            // not a colour literal.
+            if (/[\w#]/.test(line[index + source.length] ?? '')) continue
+            const color = parseColor(source)
+            if (color !== undefined) found.push({ color, from: index, to: index + source.length })
         }
         return found
     }

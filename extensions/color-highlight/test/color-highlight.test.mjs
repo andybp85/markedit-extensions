@@ -157,3 +157,35 @@ test('a line outside the visible ranges is not scanned', () => {
         [2],
     )
 })
+
+test('a three-digit hex token doubles each digit', () => {
+    assert.deepEqual(paint('a #f8c'), [{ from: 2, style: style('rgba(255, 136, 204, 1)', '#000000'), to: 6 }])
+})
+
+test('a hex run of an undefined length paints nothing', () => {
+    assert.deepEqual(paint('a #12345'), [])
+    assert.deepEqual(paint('a #1234567'), [])
+})
+
+// The run of hex digits is greedy, so this is one candidate of eight characters
+// rather than #abcdef with two letters left over.
+test('a hex run followed by more letters paints nothing', () => {
+    assert.deepEqual(paint('a #abcdefgh'), [])
+})
+
+test('a hex token after a word character paints nothing', () => {
+    assert.deepEqual(paint('word#ff0000'), [])
+    assert.deepEqual(paint('a ##ff0000'), [])
+})
+
+test('a hex token that opens a line paints nothing', () => {
+    assert.deepEqual(paint('#face'), [])
+    assert.deepEqual(paint('    #face'), [])
+    assert.deepEqual(paint('one\n#ff0000'), [])
+})
+
+test('a hex token after a list marker or a word on the same line paints', () => {
+    assert.equal(paint('- #ff0000').length, 1)
+    assert.equal(paint('The brand is #ff0000').length, 1)
+    assert.equal(paint('color: #ff0000;').length, 1)
+})
