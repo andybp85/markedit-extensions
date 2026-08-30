@@ -10,6 +10,7 @@
 .memsearch/
 .firecrawl/
 .superpowers/
+.claude/worktrees/
 
 # Markers that decline an optional commit guard, one per machine
 .md-tooling-declined
