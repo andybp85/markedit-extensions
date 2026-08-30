@@ -23,9 +23,13 @@
     // and refuses a nested parenthesis such as `calc()`.
     const CANDIDATE = /#[0-9a-f]+|\b(?:rgb|hsl)a?\([^()\n]*\)/gi
 
-    const HEX_LENGTHS = new Set([3, 6])
+    const HEX_LENGTHS = new Set([3, 4, 6, 8])
 
     const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
+
+    // Every alpha reaching a style string passes through here, so the number in
+    // the CSS is short: 0x80 / 255 is 0.5019607843137255 and becomes 0.502.
+    const roundAlpha = alpha => Math.round(alpha * 1000) / 1000
 
     // One argument of a functional form: an optional sign, digits with an
     // optional decimal point, and an optional percent. Anything else — `none`, a
@@ -58,7 +62,7 @@
         if (token === undefined) return 1
         const number = parseNumber(token)
         if (number === undefined) return undefined
-        return clamp(number.isPercent ? number.value / 100 : number.value, 0, 1)
+        return roundAlpha(clamp(number.isPercent ? number.value / 100 : number.value, 0, 1))
     }
 
     // A percentage is of 255; a plain number is already 0..255.
@@ -71,10 +75,10 @@
     const parseHex = source => {
         const digits = source.slice(1)
         if (!HEX_LENGTHS.has(digits.length)) return undefined
-        // The short form doubles each digit: #f8c is #ff88cc.
-        const full = digits.length === 3 ? [...digits].map(digit => digit + digit).join('') : digits
+        // The short forms double each digit: #f8c is #ff88cc, #f8c4 is #ff88cc44.
+        const full = digits.length <= 4 ? [...digits].map(digit => digit + digit).join('') : digits
         const channel = index => Number.parseInt(full.slice(index * 2, index * 2 + 2), 16)
-        return { a: 1, b: channel(2), g: channel(1), r: channel(0) }
+        return { a: full.length === 8 ? roundAlpha(channel(3) / 255) : 1, b: channel(2), g: channel(1), r: channel(0) }
     }
 
     // Returns { a, b, g, r } with r, g and b in 0..255 and a in 0..1, or
@@ -94,7 +98,7 @@
         if (form !== 'rgb' && form !== 'rgba') return undefined
         const [r, g, b] = args.channels.map(rgbChannel)
         if (r === undefined || g === undefined || b === undefined) return undefined
-        return { a: 1, b, g, r }
+        return { a, b, g, r }
     }
 
     const linearize = value => {
@@ -109,7 +113,19 @@
     // reads better and below it white does.
     const THRESHOLD = 0.179
 
-    const contrastColor = color => (luminance(color) > THRESHOLD ? '#000000' : '#ffffff')
+    // What the eye sees: a transparent colour laid over what is behind it. An
+    // opaque colour is already what the eye sees and is handed back unchanged;
+    // the composite carries no alpha, and luminance reads only b, g and r.
+    const over = (color, background) =>
+        color.a >= 1
+            ? color
+            : {
+                  b: color.b * color.a + background.b * (1 - color.a),
+                  g: color.g * color.a + background.g * (1 - color.a),
+                  r: color.r * color.a + background.r * (1 - color.a),
+              }
+
+    const contrastColor = (color, background) => (luminance(over(color, background)) > THRESHOLD ? '#000000' : '#ffffff')
 
     // Everything before `index` is whitespace, so the token opens the line. In
     // Markdown that position belongs to a heading or an anchor far more often
@@ -153,25 +169,45 @@
         return found
     }
 
-    const mark = color =>
+    const mark = (color, background) =>
         Decoration.mark({
             attributes: {
                 style:
                     `background-color: rgba(${color.r}, ${color.g}, ${color.b}, ${color.a}); ` +
-                    `color: ${contrastColor(color)}; border-radius: 3px;`,
+                    `color: ${contrastColor(color, background)}; border-radius: 3px;`,
             },
         })
 
+    const WHITE = { a: 1, b: 255, g: 255, r: 255 }
+
+    // The text of a transparent token sits on the editor, so the choice of black
+    // or white has to know what is behind it. `.cm-content` is usually
+    // transparent and the colour lives on an ancestor, so walk up until one of
+    // them answers with something opaque. parseColor reads the answer because
+    // getComputedStyle replies in the old comma syntax, which it already parses.
+    // Two answers keep the walk going: one parseColor does not recognise, such
+    // as the keyword `transparent`, and one that parses but is fully see-through.
+    const editorBackground = view => {
+        for (let element = view.contentDOM; element; element = element.parentElement) {
+            const color = parseColor(window.getComputedStyle(element).backgroundColor ?? '')
+            if (color !== undefined && color.a > 0) return color
+        }
+        return WHITE
+    }
+
     // Only the visible ranges are walked, so the work is bounded by the screen
-    // and not by the size of the document.
+    // and not by the size of the document. The background is read one time for
+    // each build, not one time for each colour.
     const buildDecorations = view => {
         const builder = new RangeSetBuilder()
+        const background = editorBackground(view)
 
         for (const { from, to } of view.visibleRanges) {
             let pos = from
             while (pos <= to) {
                 const line = view.state.doc.lineAt(pos)
-                for (const found of findColors(line.text)) builder.add(line.from + found.from, line.from + found.to, mark(found.color))
+                for (const found of findColors(line.text))
+                    builder.add(line.from + found.from, line.from + found.to, mark(found.color, background))
                 pos = line.to + 1
             }
         }

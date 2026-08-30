@@ -240,3 +240,48 @@ test('a word ending in rgb is not a functional form', () => {
 test('uppercase RGB paints', () => {
     assert.equal(paint('a RGB(255, 0, 0)')[0].style, style('rgba(255, 0, 0, 1)', '#000000'))
 })
+
+test('a four-digit hex token doubles each digit, alpha included', () => {
+    assert.equal(paint('a #f00c')[0].style, style('rgba(255, 0, 0, 0.8)', '#000000'))
+})
+
+test('an eight-digit hex token carries its alpha', () => {
+    assert.equal(paint('a #ff000080')[0].style, style('rgba(255, 0, 0, 0.502)', '#000000'))
+})
+
+test('rgba() carries its alpha, as a fourth argument and after a slash', () => {
+    assert.equal(paint('a rgba(255, 0, 0, 0.5)')[0].style, style('rgba(255, 0, 0, 0.5)', '#000000'))
+    assert.equal(paint('a rgb(255 0 0 / 0.5)')[0].style, style('rgba(255, 0, 0, 0.5)', '#000000'))
+    assert.equal(paint('a rgb(255 0 0 / 50%)')[0].style, style('rgba(255, 0, 0, 0.5)', '#000000'))
+})
+
+test('an unparseable alpha paints nothing', () => {
+    assert.deepEqual(paint('a rgba(255, 0, 0, half)'), [])
+    assert.deepEqual(paint('a rgb(255 0 0 / )'), [])
+})
+
+test('an alpha out of range is clamped', () => {
+    assert.equal(paint('a rgba(255, 0, 0, 7)')[0].style, style('rgba(255, 0, 0, 1)', '#000000'))
+})
+
+// White at one tenth opacity is nearly the background. On a light editor it
+// needs black text; on a dark editor the very same token needs white.
+test('a transparent colour composites over the editor before the choice', () => {
+    const faint = 'a rgba(255, 255, 255, 0.1)'
+    assert.equal(paint(faint, { backgrounds: ['rgb(255, 255, 255)'] })[0].style, style('rgba(255, 255, 255, 0.1)', '#000000'))
+    assert.equal(paint(faint, { backgrounds: ['rgb(0, 0, 0)'] })[0].style, style('rgba(255, 255, 255, 0.1)', '#ffffff'))
+})
+
+test('an opaque colour ignores the editor background', () => {
+    assert.equal(paint('a #ff0000', { backgrounds: ['rgb(0, 0, 0)'] })[0].style, style('rgba(255, 0, 0, 1)', '#000000'))
+})
+
+test('a transparent content element takes the background of an ancestor', () => {
+    const painted = paint('a rgba(255, 255, 255, 0.1)', { backgrounds: ['rgba(0, 0, 0, 0)', 'rgb(0, 0, 0)'] })
+    assert.equal(painted[0].style, style('rgba(255, 255, 255, 0.1)', '#ffffff'))
+})
+
+test('an editor with no usable background is treated as white', () => {
+    const painted = paint('a rgba(255, 255, 255, 0.1)', { backgrounds: ['transparent'] })
+    assert.equal(painted[0].style, style('rgba(255, 255, 255, 0.1)', '#000000'))
+})
