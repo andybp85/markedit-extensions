@@ -27,8 +27,10 @@
 
     const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
 
-    // Every alpha reaching a style string passes through here, so the number in
-    // the CSS is short: 0x80 / 255 is 0.5019607843137255 and becomes 0.502.
+    // Every alpha computed from a parsed number passes through here, so the
+    // number in the CSS is short: 0x80 / 255 is 0.5019607843137255 and becomes
+    // 0.502. The default for a colour that states no alpha is a bare 1, written
+    // by parseAlpha and parseHex without this call — 1 has nothing to round.
     const roundAlpha = alpha => Math.round(alpha * 1000) / 1000
 
     // One argument of a functional form: an optional sign, digits with an
@@ -114,11 +116,13 @@
     const THRESHOLD = 0.179
 
     // What the eye sees: a transparent colour laid over what is behind it. An
-    // opaque colour is already what the eye sees and is handed back unchanged;
-    // the composite carries no alpha, and luminance reads only b, g and r.
+    // opaque colour is already what the eye sees, so that branch skips the
+    // arithmetic and copies the three channels. Both branches return the same
+    // shape and neither carries an alpha: the result sits on an opaque editor
+    // background, so it is opaque, and an alpha key would say nothing.
     const over = (color, background) =>
         color.a >= 1
-            ? color
+            ? { b: color.b, g: color.g, r: color.r }
             : {
                   b: color.b * color.a + background.b * (1 - color.a),
                   g: color.g * color.a + background.g * (1 - color.a),
@@ -183,10 +187,18 @@
     // The text of a transparent token sits on the editor, so the choice of black
     // or white has to know what is behind it. `.cm-content` is usually
     // transparent and the colour lives on an ancestor, so walk up until one of
-    // them answers with something opaque. parseColor reads the answer because
-    // getComputedStyle replies in the old comma syntax, which it already parses.
-    // Two answers keep the walk going: one parseColor does not recognise, such
-    // as the keyword `transparent`, and one that parses but is fully see-through.
+    // them answers with something that is not fully transparent. parseColor
+    // reads the answer because getComputedStyle replies in the old comma syntax,
+    // which it already parses. Two answers keep the walk going: one parseColor
+    // does not recognise, such as the keyword `transparent`, and one that parses
+    // but is fully see-through.
+    //
+    // That first non-transparent ancestor is then treated as opaque: `over`
+    // composites onto its b, g and r and never discounts its alpha. The
+    // approximation is exact when ancestor backgrounds are opaque or fully
+    // transparent, which is what a MarkEdit editor presents. For a partly
+    // transparent one it is wrong by however much shows through, and the true
+    // colour would mean compositing that ancestor over its own ancestor in turn.
     const editorBackground = view => {
         for (let element = view.contentDOM; element; element = element.parentElement) {
             const color = parseColor(window.getComputedStyle(element).backgroundColor ?? '')
