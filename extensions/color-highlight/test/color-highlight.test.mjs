@@ -318,3 +318,11 @@ test('a hue in a unit this parser does not know paints nothing', () => {
     assert.deepEqual(paint('a hsl(0.5turn, 100%, 50%)'), [])
     assert.deepEqual(paint('a hsl(1rad, 100%, 50%)'), [])
 })
+
+// NUMBER accepts a trailing percent because two of the three hsl() arguments
+// are percentages. The hue is not one of them in any CSS syntax, so a hue
+// written that way is a token no engine accepts and nothing is painted.
+test('a percentage hue paints nothing', () => {
+    assert.deepEqual(paint('a hsl(50%, 100%, 50%)'), [])
+    assert.deepEqual(paint('a hsl(50% 100% 50%)'), [])
+})

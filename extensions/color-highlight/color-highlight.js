@@ -114,8 +114,13 @@
     // A hue is degrees, written bare or with `deg`. Stripping that suffix leaves
     // a bare number; any other angle unit stays in the token and NUMBER refuses
     // it, so `rad`, `grad` and `turn` — rare in a hand-written colour — leave
-    // the token unpainted rather than painted as some other colour.
-    const parseHue = token => parseNumber(token.replace(/deg$/i, ''))
+    // the token unpainted rather than painted as some other colour. NUMBER does
+    // accept a trailing percent, because the other two hsl() arguments are
+    // percentages; a hue is not one in any CSS syntax, so it is refused here.
+    const parseHue = token => {
+        const hue = parseNumber(token.replace(/deg$/i, ''))
+        return hue?.isPercent ? undefined : hue
+    }
 
     // Returns { a, b, g, r } with r, g and b in 0..255 and a in 0..1, or
     // undefined. Everything downstream therefore holds a real colour.
