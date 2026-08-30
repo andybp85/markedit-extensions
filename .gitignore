@@ -11,6 +11,11 @@
 .firecrawl/
 .superpowers/
 
+# Markers that decline an optional commit guard, one per machine
+.md-tooling-declined
+.secrets-guard-declined
+.docs-guard-declined
+
 # Node (in case tooling is added later)
 node_modules/
 dist/
