@@ -36,10 +36,14 @@ function viewOf(text, { backgrounds = ['rgb(255, 255, 255)'], visibleRanges } = 
 
 // Build a sandbox emulating the MarkEdit WebView, load the drop-in script, and
 // return what it registered plus spies on everything it can call.
-function load({ userSettings = {} } = {}) {
-    const calls = { alerts: [] }
+function load({ createFileResult = true, files = {}, getFileContentError, listFilesError, listing, userSettings = {} } = {}) {
+    const calls = { alerts: [], created: [], directoryPaths: [], listed: [] }
     const extensions = []
     let menuItem = null
+
+    // listFiles defaults to a listing of the stubbed files, so an absent file in
+    // `files` is genuinely absent unless a test says otherwise.
+    const defaultListing = () => Object.keys(files)
 
     const MarkEdit = {
         addExtension: extension => {
@@ -48,7 +52,21 @@ function load({ userSettings = {} } = {}) {
         addMainMenuItem: item => {
             menuItem = item
         },
+        createFile: async args => {
+            calls.created.push({ ...args })
+            return createFileResult
+        },
         editorView: undefined,
+        getDirectoryPath: name => {
+            calls.directoryPaths.push(name)
+            return '/docs'
+        },
+        getFileContent: async path => (getFileContentError ? Promise.reject(getFileContentError) : files[path]),
+        listFiles: async path => {
+            calls.listed.push(path)
+            if (listFilesError) throw listFilesError
+            return listing === undefined ? defaultListing() : listing
+        },
         showAlert: alert => {
             calls.alerts.push(alert)
         },
@@ -404,4 +422,115 @@ test('an unrelated transaction does not rebuild', () => {
     const unrelated = loaded.StateEffect.define().of(undefined)
     instance.update({ docChanged: false, transactions: [{ effects: [unrelated] }], view, viewportChanged: false })
     assert.equal(instance.decorations, before, 'the set should be the same object, not a rebuild')
+})
+
+// The toggle writes the file in a promise that the caller does not await.
+const settled = () => new Promise(resolve => setImmediate(resolve))
+
+test('a toggle writes settings.json and keeps the unrelated keys', async () => {
+    const files = { '/docs/settings.json': JSON.stringify({ 'editor.fontSize': 14, 'extension.copyOnSelect': { enabled: true } }) }
+    const { calls, menuItem } = load({ files })
+    menuItem.action()
+    await settled()
+
+    assert.equal(calls.created.length, 1)
+    assert.equal(calls.created[0].path, '/docs/settings.json')
+    assert.equal(calls.created[0].overwrites, true)
+    const written = JSON.parse(calls.created[0].string)
+    assert.deepEqual(written['extension.colorHighlight'], { enabled: false })
+    assert.equal(written['editor.fontSize'], 14)
+    assert.deepEqual(written['extension.copyOnSelect'], { enabled: true })
+})
+
+test('a toggle keeps the unrelated keys inside its own settings object', async () => {
+    const files = { '/docs/settings.json': JSON.stringify({ 'extension.colorHighlight': { enabled: true, note: 'keep me' } }) }
+    const { calls, menuItem } = load({ files })
+    menuItem.action()
+    await settled()
+    assert.deepEqual(JSON.parse(calls.created[0].string)['extension.colorHighlight'], { enabled: false, note: 'keep me' })
+})
+
+test('an absent settings.json is written as a new file', async () => {
+    const { calls, menuItem } = load()
+    menuItem.action()
+    await settled()
+    assert.deepEqual(JSON.parse(calls.created[0].string), { 'extension.colorHighlight': { enabled: false } })
+})
+
+test('the settings path comes from the documents directory', async () => {
+    const { calls, menuItem } = load()
+    menuItem.action()
+    await settled()
+    assert.deepEqual(calls.directoryPaths, ['documents'])
+    assert.deepEqual(calls.listed, ['/docs'])
+    assert.equal(calls.created[0].path, '/docs/settings.json')
+})
+
+test('a malformed settings.json alerts and writes nothing', async () => {
+    const { calls, menuItem } = load({ files: { '/docs/settings.json': '{ this is not json' } })
+    menuItem.action()
+    await settled()
+    assert.deepEqual(calls.created, [], 'an unparseable file must never be overwritten')
+    assert.equal(calls.alerts.length, 1)
+    assert.match(calls.alerts[0].message, /settings\.json/)
+    assert.equal(calls.alerts[0].title, 'Highlight Colors')
+})
+
+test('a settings.json holding a non-object alerts and writes nothing', async () => {
+    const { calls, menuItem } = load({ files: { '/docs/settings.json': '[1, 2, 3]' } })
+    menuItem.action()
+    await settled()
+    assert.deepEqual(calls.created, [])
+    assert.equal(calls.alerts.length, 1)
+})
+
+// getFileContent gives undefined when the read fails, not when the file is
+// absent. A write then replaces every MarkEdit setting with this one key.
+test('an unreadable settings.json that a listing shows to be present alerts and writes nothing', async () => {
+    const { calls, menuItem } = load({ listing: ['settings.json'] })
+    menuItem.action()
+    await settled()
+    assert.deepEqual(calls.created, [], 'a file that can be listed must never be replaced')
+    assert.equal(calls.alerts.length, 1)
+})
+
+test('a failed listing alerts and writes nothing', async () => {
+    const { calls, menuItem } = load({ listing: false })
+    menuItem.action()
+    await settled()
+    assert.deepEqual(calls.created, [], 'absence that cannot be proved must never be assumed')
+    assert.equal(calls.alerts.length, 1)
+})
+
+test('a rejecting file API alerts once and does not throw', async () => {
+    const { calls, menuItem } = load({ getFileContentError: new Error('disk error') })
+    assert.doesNotThrow(() => menuItem.action())
+    await settled()
+    assert.deepEqual(calls.created, [])
+    assert.equal(calls.alerts.length, 1)
+})
+
+test('a rejecting listFiles alerts and writes nothing', async () => {
+    const { calls, menuItem } = load({ listFilesError: new Error('no such directory') })
+    assert.doesNotThrow(() => menuItem.action())
+    await settled()
+    assert.deepEqual(calls.created, [])
+    assert.equal(calls.alerts.length, 1)
+})
+
+test('a failed write alerts and leaves the toggle working in memory', async () => {
+    const { calls, menuItem } = load({ createFileResult: false })
+    menuItem.action()
+    await settled()
+    assert.equal(calls.alerts.length, 1)
+    assert.equal(menuItem.state().isSelected, false)
+})
+
+test('a broken settings.json alerts one time for each session', async () => {
+    const { calls, menuItem } = load({ files: { '/docs/settings.json': '{ nope' } })
+    menuItem.action()
+    await settled()
+    menuItem.action()
+    await settled()
+    assert.equal(calls.alerts.length, 1)
 })

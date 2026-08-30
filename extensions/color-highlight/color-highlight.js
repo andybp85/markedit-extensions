@@ -17,10 +17,21 @@
 
     const MENU_TITLE = 'Highlight Colors'
     const SETTINGS_KEY = 'extension.colorHighlight'
+    const SETTINGS_FILE = 'settings.json'
+
+    const PARSE_FAILURE =
+        `${SETTINGS_FILE} could not be read, so the setting was not saved. ` +
+        'Correct the file, or the toggle will reset when you quit MarkEdit.'
+    const READ_FAILURE = `${SETTINGS_FILE} could not be opened, so the setting was not saved. The toggle will reset when you quit MarkEdit.`
+    const WRITE_FAILURE = `${SETTINGS_FILE} could not be written, so the setting was not saved. The toggle will reset when you quit MarkEdit.`
 
     // Painting is on unless the settings say otherwise, and the setting is read
     // one time, at load. The menu item below moves this from then on.
     let enabled = MarkEdit.userSettings?.[SETTINGS_KEY]?.enabled ?? true
+
+    // One alert for each session. A user who toggles the item against a broken
+    // file does not need one alert for each attempt.
+    let alerted = false
 
     // A candidate is a shape that could be a colour. It is deliberately loose:
     // parseColor is what decides. The run of hex digits is greedy, so a
@@ -314,14 +325,87 @@
         ),
     )
 
+    // typeof null is 'object', so the null test is not redundant. JSON.parse is
+    // what produces null here; the rest of the file uses undefined.
+    const isPlainObject = value => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+    const alertOnce = message => {
+        if (alerted) return
+        alerted = true
+        MarkEdit.showAlert({ message, title: MENU_TITLE })
+    }
+
+    const parseSettings = raw => {
+        try {
+            return JSON.parse(raw)
+        } catch {
+            return undefined
+        }
+    }
+
+    // Proof that the file is not there, which only a successful listing gives. A
+    // listing that fails, or that holds the file, proves nothing.
+    const settingsAbsent = async directory => {
+        const listing = await MarkEdit.listFiles(directory)
+        return Array.isArray(listing) && !listing.some(entry => entry === SETTINGS_FILE || entry.endsWith(`/${SETTINGS_FILE}`))
+    }
+
+    // Read, merge one key, write back, so every unrelated setting survives. Each
+    // half has its own try/catch: a rejected API call is a failure of that half,
+    // and it must alert with that message instead of escaping as an unhandled
+    // rejection.
+    const persistEnabled = async () => {
+        let path
+        let settings = {}
+
+        try {
+            const directory = MarkEdit.getDirectoryPath('documents')
+            path = `${directory}/${SETTINGS_FILE}`
+            const raw = await MarkEdit.getFileContent(path)
+
+            if (typeof raw !== 'string') {
+                // The API returns undefined when the read fails, not when the file is
+                // absent. A write now could replace a real settings.json with this one
+                // key, so refuse until a listing proves that the file is not there.
+                if (!(await settingsAbsent(directory))) {
+                    alertOnce(READ_FAILURE)
+                    return
+                }
+            } else if (raw.trim() !== '') {
+                const parsed = parseSettings(raw)
+                if (!isPlainObject(parsed)) {
+                    // Writing now would replace every MarkEdit setting with this one key.
+                    alertOnce(PARSE_FAILURE)
+                    return
+                }
+                settings = parsed
+            }
+        } catch {
+            alertOnce(READ_FAILURE)
+            return
+        }
+
+        try {
+            const current = isPlainObject(settings[SETTINGS_KEY]) ? settings[SETTINGS_KEY] : {}
+            const merged = { ...settings, [SETTINGS_KEY]: { ...current, enabled } }
+            const written = await MarkEdit.createFile({ overwrites: true, path, string: JSON.stringify(merged, null, 2) })
+            if (!written) alertOnce(WRITE_FAILURE)
+        } catch {
+            alertOnce(WRITE_FAILURE)
+        }
+    }
+
     // The checkmark and the guard in buildDecorations read the same boolean. A
     // StateField holding it was considered and rejected: it would be a second
     // place where "is this on?" lives, and the menu item would still need the
     // module value to draw its checkmark. The optional call is defensive: with
     // no view there is nothing to dispatch to, and the flip stands on its own.
+    // The write is started and not awaited: the repaint is what the user is
+    // waiting on, and persistEnabled reports its own failures through an alert.
     const toggle = () => {
         enabled = !enabled
         MarkEdit.editorView?.dispatch({ effects: repaint.of(undefined) })
+        void persistEnabled()
     }
 
     MarkEdit.addMainMenuItem({
