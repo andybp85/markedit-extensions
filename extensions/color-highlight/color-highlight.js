@@ -117,6 +117,16 @@
     // colour literal follows a property name, a word, or a list marker.
     const opensLine = (line, index) => line.slice(0, index).trim() === ''
 
+    // A lookbehind in CANDIDATE would be shorter than reading the neighbour out
+    // of the line, but the WebView that runs this script is not guaranteed to
+    // have one. A missing neighbour is the start or the end of the line.
+    const isWordish = character => /[\w#]/.test(character ?? '')
+
+    // What disqualifies a hex candidate on its left: it opens the line, or it
+    // continues a word. Both are `#` phenomena, so neither is asked of a
+    // functional form — one that opens a line is a real colour, not a heading.
+    const leadRefusesHex = (line, index) => opensLine(line, index) || isWordish(line[index - 1])
+
     // A sweep runs over one line, which is what makes the rules that reject a
     // candidate expressible at all: neither "first on the line" nor "preceded by
     // a word character" means anything against a slice of arbitrary text.
@@ -127,23 +137,16 @@
             const source = match[0]
             const index = match.index
             const isHex = source[0] === '#'
-            // Both guards exist to keep hex digits from being mistaken for a
-            // heading marker or an identifier fragment. A functional form has
-            // neither problem: `\b` in CANDIDATE already refuses one glued to a
-            // word (srgb(...) never matches), and a form opening the line is a
-            // real colour, not a heading. So both guards apply to hex only.
-            if (isHex) {
-                // A lookbehind in the pattern would be shorter, but the WebView
-                // that runs this script is not guaranteed to have one.
-                if (opensLine(line, index) || /[\w#]/.test(line[index - 1] ?? '')) continue
-                // CANDIDATE only matches hex digits, so a non-hex letter right
-                // after the match (#abcdefgh matches #abcdef, then stops at "g")
-                // is not absorbed into it — the match ends there regardless. A
-                // word character in that position means the digit run is glued
-                // to more identifier text rather than standing on its own, so it
-                // is still not a colour literal.
-                if (/[\w#]/.test(line[index + source.length] ?? '')) continue
-            }
+            if (isHex && leadRefusesHex(line, index)) continue
+            // The trailing rule is asked of every candidate, hex or functional:
+            // `\b` in CANDIDATE anchors only the left of `rgb`/`hsl` and says
+            // nothing about what follows the closing parenthesis, and a colour
+            // token glued to trailing identifier text is not a colour literal in
+            // either form. A hex match ends on its own — CANDIDATE matches only
+            // hex digits, so #abcdefgh matches #abcdef and stops at "g" rather
+            // than absorbing it — and that is exactly the case this rejects: the
+            // digit run continues a word instead of standing on its own.
+            if (isWordish(line[index + source.length])) continue
             const color = parseColor(source)
             if (color !== undefined) found.push({ color, from: index, to: index + source.length })
         }

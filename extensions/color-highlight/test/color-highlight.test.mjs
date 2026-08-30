@@ -217,7 +217,20 @@ test('a functional form with the wrong number of arguments paints nothing', () =
 test('a functional form with an unparseable channel paints nothing', () => {
     assert.deepEqual(paint('a rgb(a, b, c)'), [])
     assert.deepEqual(paint('a rgb(none, 0, 0)'), [])
+})
+
+// `[^()\n]*` in CANDIDATE cannot cross the inner "(", so no candidate is found
+// anywhere on this line and parseColor is never called for it.
+test('a functional form holding a nested parenthesis is not a candidate', () => {
     assert.deepEqual(paint('a rgb(calc(1px), 0, 0)'), [])
+})
+
+// `\b` in CANDIDATE anchors the left of `rgb` only, so a functional form glued
+// to trailing word characters is refused by the trailing guard rather than by
+// the pattern — the same rule that refuses `#ff0000word`.
+test('a functional form followed by a word character paints nothing', () => {
+    assert.deepEqual(paint('rgb(255, 0, 0)word'), [])
+    assert.deepEqual(paint('a rgb(255, 0, 0)word'), [])
 })
 
 test('a word ending in rgb is not a functional form', () => {
