@@ -167,8 +167,9 @@ test('a hex run of an undefined length paints nothing', () => {
     assert.deepEqual(paint('a #1234567'), [])
 })
 
-// The run of hex digits is greedy, so this is one candidate of eight characters
-// rather than #abcdef with two letters left over.
+// CANDIDATE only matches hex digits, so the candidate here is #abcdef — six
+// digits that parse fine on their own. It is the trailing guard that refuses
+// it, because a word character ("g") immediately follows the match.
 test('a hex run followed by more letters paints nothing', () => {
     assert.deepEqual(paint('a #abcdefgh'), [])
 })
