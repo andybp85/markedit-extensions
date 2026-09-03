@@ -64,7 +64,11 @@ The colour of the editor background is read when the paint is built. It matters 
 the editor shows through such a token. After a theme change, the text colour of a transparent token keeps its old choice
 until the next edit or the next scroll. An opaque token is not affected: its text sits on its own colour.
 
-The extension covers the editor only. A user script cannot reach the Markdown preview pane.
+The extension covers the editor only. A user script cannot reach the Markdown preview pane. The preview is drawn
+by the [MarkEdit-preview](https://github.com/MarkEdit-app/MarkEdit-preview) extension, so painting it is that
+extension's job. A port of this parser that does so lives in the fork at
+[andybp85/MarkEdit-preview](https://github.com/andybp85/MarkEdit-preview), set with `colorHighlight` under
+`extension.markeditPreview`.
 
 ## Uninstall
 
